@@ -50,6 +50,12 @@ function.
 	returns any error (non-zero return code) and if it does not, you can
 	start using get_revision() to do the iteration.
 
+`prepare_revision_walk_extended`::
+
+	Like prepare_revision_walk(), but allows callers to take ownership
+	of the array of pending objects by passing an object_array pointer
+	as the second parameter; passing NULL clears the array.
+
 `get_revision`::
 
 	Takes a pointer to a `rev_info` structure and iterates over it,

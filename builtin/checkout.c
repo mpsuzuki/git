@@ -803,14 +803,7 @@ static void orphaned_commit_warning(struct commit *old, struct commit *new)
 	add_pending_oid(&revs, "HEAD", &new->object.oid, UNINTERESTING);
 
 	/* Save pending objects, so they can be cleaned up later. */
-	refs = revs.pending;
-	revs.leak_pending = 1;
-
-	/*
-	 * prepare_revision_walk (together with .leak_pending = 1) makes us
-	 * the sole owner of the list of pending objects.
-	 */
-	if (prepare_revision_walk(&revs))
+	if (prepare_revision_walk_extended(&revs, &refs))
 		die(_("internal error in revision walk"));
 	if (!(old->object.flags & UNINTERESTING))
 		suggest_reattach(old, &revs);
