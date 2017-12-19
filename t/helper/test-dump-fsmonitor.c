@@ -19,5 +19,6 @@ int cmd_main(int ac, const char **av)
 	for (i = 0; i < istate->cache_nr; i++)
 		printf((istate->cache[i]->ce_flags & CE_FSMONITOR_VALID) ? "+" : "-");
 
+	printf("\n");
 	return 0;
 }
