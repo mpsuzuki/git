@@ -29,6 +29,12 @@ extern void add_fsmonitor(struct index_state *istate);
 extern void remove_fsmonitor(struct index_state *istate);
 
 /*
+ * Inflate the fsmonitor_dirty ewah into the CE_FSMONITOR_VALID bits.
+ * Called by tweak_fsmonitor.
+ */
+extern void inflate_fsmonitor_ewah(struct index_state *istate);
+
+/*
  * Add/remove the fsmonitor index extension as necessary based on the current
  * core.fsmonitor setting.
  */
