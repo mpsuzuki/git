@@ -431,6 +431,9 @@ all::
 # Define TEST_SHELL_PATH if you want to use a shell besides SHELL_PATH for
 # running the test scripts (e.g., bash has better support for "set -x"
 # tracing).
+#
+# When cross-compiling, define HOST_CPU as the canonical name of the CPU on
+# which the built Git will run (for instance "x86_64").
 
 GIT-VERSION-FILE: FORCE
 	@$(SHELL_PATH) ./GIT-VERSION-GEN
@@ -1105,6 +1108,12 @@ BROKEN_PATH_FIX = 's|^\# @@BROKEN_PATH_FIX@@$$|git_broken_path_fix $(SANE_TOOL_P
 PATH := $(SANE_TOOL_PATH):${PATH}
 else
 BROKEN_PATH_FIX = '/^\# @@BROKEN_PATH_FIX@@$$/d'
+endif
+
+ifeq (,$(HOST_CPU))
+	BASIC_CFLAGS += -DGIT_HOST_CPU="\"$(firstword $(subst -, ,$(uname_M)))\""
+else
+	BASIC_CFLAGS += -DGIT_HOST_CPU="\"$(HOST_CPU)\""
 endif
 
 ifneq (,$(INLINE))
@@ -1922,7 +1931,9 @@ builtin/help.sp builtin/help.s builtin/help.o: EXTRA_CPPFLAGS = \
 version.sp version.s version.o: GIT-VERSION-FILE GIT-USER-AGENT
 version.sp version.s version.o: EXTRA_CPPFLAGS = \
 	'-DGIT_VERSION="$(GIT_VERSION)"' \
-	'-DGIT_USER_AGENT=$(GIT_USER_AGENT_CQ_SQ)'
+	'-DGIT_USER_AGENT=$(GIT_USER_AGENT_CQ_SQ)' \
+	'-DGIT_BUILT_FROM_COMMIT="$(shell GIT_CEILING_DIRECTORIES=\"$(CURDIR)/..\" \
+		git rev-parse -q --verify HEAD || :)"'
 
 $(BUILT_INS): git$X
 	$(QUIET_BUILT_IN)$(RM) $@ && \
