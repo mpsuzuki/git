@@ -15,6 +15,10 @@ struct archiver_args {
 	unsigned int worktree_attributes : 1;
 	unsigned int convert : 1;
 	int compression_level;
+	int uid;
+	int gid;
+	const char *uname;
+	const char *gname;
 };
 
 #define ARCHIVER_WANT_COMPRESSION_LEVELS 1
