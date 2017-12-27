@@ -8,6 +8,7 @@
 #include "parse-options.h"
 #include "unpack-trees.h"
 #include "dir.h"
+#include "git-compat-util.h"
 
 static char const * const archive_usage[] = {
 	N_("git archive [<options>] <tree-ish> [<path>...]"),
@@ -417,6 +418,51 @@ static void parse_treeish_arg(const char **argv,
 	{ OPTION_SET_INT, (s), NULL, (v), NULL, "", \
 	  PARSE_OPT_NOARG | PARSE_OPT_NONEG | PARSE_OPT_HIDDEN, NULL, (p) }
 
+static void set_args_uname_uid(struct archiver_args *args,
+		const char* tar_owner, int set_gid_too)
+{
+	const char* col_pos = strchr(tar_owner, ':');
+	struct passwd* pw = NULL;
+
+	if (col_pos) {
+		args->uname = xstrndup(tar_owner, col_pos - tar_owner);
+		args->uid = atoi(col_pos + 1);
+		return;
+	}
+
+	args->uname = xstrndup(tar_owner, strlen(tar_owner));
+	pw = getpwnam(tar_owner);
+	if (!pw)
+		return;
+
+	args->uid = pw->pw_uid;
+	if (set_gid_too)
+		args->gid = pw->pw_gid;
+
+	return;
+}
+
+static void set_args_gname_gid(struct archiver_args *args,
+		const char* tar_group)
+{
+	const char* col_pos = strchr(tar_group, ':');
+	struct group* gr = NULL;
+
+	if (col_pos) {
+		args->gname = xstrndup(tar_group, col_pos - tar_group);
+		args->gid = atoi(col_pos + 1);
+		return;
+	}
+
+	args->gname = xstrndup(tar_group, strlen(tar_group));
+	gr = getgrnam(tar_group);
+	if (!gr)
+		return;
+
+	args->gid = gr->gr_gid;
+	return;
+}
+
 static int parse_archive_args(int argc, const char **argv,
 		const struct archiver **ar, struct archiver_args *args,
 		const char *name_hint, int is_remote)
@@ -431,6 +477,8 @@ static int parse_archive_args(int argc, const char **argv,
 	int i;
 	int list = 0;
 	int worktree_attributes = 0;
+	char *tar_owner = NULL;
+	char *tar_group = NULL;
 	struct option opts[] = {
 		OPT_GROUP(""),
 		OPT_STRING(0, "format", &format, N_("fmt"), N_("archive format")),
@@ -459,6 +507,8 @@ static int parse_archive_args(int argc, const char **argv,
 			N_("retrieve the archive from remote repository <repo>")),
 		OPT_STRING(0, "exec", &exec, N_("command"),
 			N_("path to the remote git-upload-archive command")),
+		OPT_STRING(0, "owner", &tar_owner, N_("owner"), N_("<name[:uid]> in tar")),
+		OPT_STRING(0, "group", &tar_group, N_("group"), N_("<name[:gid]> in tar")),
 		OPT_END()
 	};
 
@@ -506,6 +556,13 @@ static int parse_archive_args(int argc, const char **argv,
 	args->base = base;
 	args->baselen = strlen(base);
 	args->worktree_attributes = worktree_attributes;
+
+	args->uname = NULL;
+	args->gname = NULL;
+	args->uid = 0;
+	args->gid = 0;
+	set_args_uname_uid(args, tar_owner, 1 /* init args->gid by pw, if resolved */);
+	set_args_gname_gid(args, tar_owner);
 
 	return argc;
 }
