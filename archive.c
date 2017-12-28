@@ -421,6 +421,9 @@ static void parse_treeish_arg(const char **argv,
 static void set_args_uname_uid(struct archiver_args *args,
 		const char* tar_owner, int set_gid_too)
 {
+	if (!args || !tar_owner)
+		return;
+
 	const char* col_pos = strchr(tar_owner, ':');
 	struct passwd* pw = NULL;
 
@@ -445,6 +448,9 @@ static void set_args_uname_uid(struct archiver_args *args,
 static void set_args_gname_gid(struct archiver_args *args,
 		const char* tar_group)
 {
+	if (!args || !tar_group)
+		return;
+
 	const char* col_pos = strchr(tar_group, ':');
 	struct group* gr = NULL;
 
@@ -561,8 +567,11 @@ static int parse_archive_args(int argc, const char **argv,
 	args->gname = NULL;
 	args->uid = 0;
 	args->gid = 0;
-	set_args_uname_uid(args, tar_owner, 1 /* init args->gid by pw, if resolved */);
-	set_args_gname_gid(args, tar_group);
+	set_args_uname_uid(args,
+		tar_owner,
+		1 /* init args->gid by pw, if resolved */);
+	set_args_gname_gid(args,
+		tar_group);
 
 	return argc;
 }
