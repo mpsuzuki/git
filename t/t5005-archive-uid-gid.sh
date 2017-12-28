@@ -57,13 +57,42 @@ test_expect_success 'test a case with explicitly specified name/id, owner=nobody
 	return ${test_result}
 '
 
-test_expect_success 'test a case with only name is specified, owner=(current my name) group=(current my group)' '
+test_expect_success 'test a case with only string is given, owner=(current my name) group=(current my group)' '
 	my_uid=`id -u` &&
 	my_gid=`id -g` &&
 	my_uname=`id -u -n` &&
 	my_gname=`id -g -n` &&
 	git archive --format=tar --owner ${my_uname} --group ${my_gname} HEAD > uid-gid-test2.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test2.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
+	test_result=$? &&
+	return ${test_result}
+'
+
+test_expect_success 'test a case with only number is given, owner=(current my uid) group=(current my gid)' '
+	my_uid=`id -u` &&
+	my_gid=`id -g` &&
+	my_uname=`id -u -n` &&
+	my_gname=`id -g -n` &&
+	git archive --format=tar --owner ${my_uid} --group ${my_gid} HEAD > uid-gid-test3.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
+	test_result=$? &&
+	return ${test_result}
+'
+
+test_expect_success 'test a case with only uid is given, owner=(current my uid)' '
+	my_uid=`id -u` &&
+	my_gid=`id -g` &&
+	my_uname=`id -u -n` &&
+	my_gname=`id -g -n` &&
+	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test4.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
+	test_result=$? &&
+	return ${test_result}
+'
+
+test_expect_success 'test a case with nothing is given' '
+	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test5.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar 0 0 root root &&
 	test_result=$? &&
 	return ${test_result}
 '
