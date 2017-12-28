@@ -562,7 +562,7 @@ static int parse_archive_args(int argc, const char **argv,
 	args->uid = 0;
 	args->gid = 0;
 	set_args_uname_uid(args, tar_owner, 1 /* init args->gid by pw, if resolved */);
-	set_args_gname_gid(args, tar_owner);
+	set_args_gname_gid(args, tar_group);
 
 	return argc;
 }
