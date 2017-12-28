@@ -421,19 +421,35 @@ static void parse_treeish_arg(const char **argv,
 static void set_args_uname_uid(struct archiver_args *args,
 		const char* tar_owner, int set_gid_too)
 {
+	const char* col_pos = NULL;
+	struct passwd* pw = NULL;
+
 	if (!args || !tar_owner)
 		return;
 
-	const char* col_pos = strchr(tar_owner, ':');
-	struct passwd* pw = NULL;
+	/* check if the operand consists of 2 tokens */
 
+	col_pos = strchr(tar_owner, ':');
 	if (col_pos) {
 		args->uname = xstrndup(tar_owner, col_pos - tar_owner);
 		args->uid = atoi(col_pos + 1);
 		return;
 	}
 
-	args->uname = xstrndup(tar_owner, strlen(tar_owner));
+	/* in below, the operand consists of 1 token */
+
+	/* check if the operand is digit only */
+	if (strlen(tar_owner) == strspn(tar_owner, "0123456789")) {
+		args->uid = atoi(tar_owner);
+		pw = getpwuid(args->uid);
+		if (pw)
+			args->uname = xstrdup(pw->pw_name);
+		return;
+	}
+
+	/* in below, the operand is not digit, take it as username */
+
+	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
 	if (!pw)
 		return;
@@ -448,24 +464,39 @@ static void set_args_uname_uid(struct archiver_args *args,
 static void set_args_gname_gid(struct archiver_args *args,
 		const char* tar_group)
 {
+	const char* col_pos = NULL;
+	struct group* gr = NULL;
+
 	if (!args || !tar_group)
 		return;
 
-	const char* col_pos = strchr(tar_group, ':');
-	struct group* gr = NULL;
+	/* check if the operand consists of 2 tokens */
 
+	col_pos = strchr(tar_group, ':');
 	if (col_pos) {
 		args->gname = xstrndup(tar_group, col_pos - tar_group);
 		args->gid = atoi(col_pos + 1);
 		return;
 	}
 
-	args->gname = xstrndup(tar_group, strlen(tar_group));
-	gr = getgrnam(tar_group);
-	if (!gr)
-		return;
+	/* in below, the operand consists of 1 token */
 
-	args->gid = gr->gr_gid;
+	/* check if the operand is digit only */
+	if (strlen(tar_group) == strspn(tar_group, "0123456789")) {
+		args->gid = atoi(tar_group);
+		gr = getgrgid(args->gid);
+		if (gr)
+			args->gname = xstrdup(gr->gr_name);
+		return;
+	}
+
+	/* in below, the operand is not digit, take it as groupname */
+
+	args->gname = xstrdup(tar_group);
+	gr = getgrnam(tar_group);
+	if (gr)
+		args->gid = gr->gr_gid;
+
 	return;
 }
 
