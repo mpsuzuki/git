@@ -11,6 +11,7 @@ SYNOPSIS
 [verse]
 'git archive' [--format=<fmt>] [--list] [--prefix=<prefix>/] [<extra>]
 	      [-o <file> | --output=<file>] [--worktree-attributes]
+	      [--owner [username[:uid]] [--group [groupname[:gid]]
 	      [--remote=<repo> [--exec=<git-upload-archive>]] <tree-ish>
 	      [<path>...]
 
@@ -62,6 +63,18 @@ OPTIONS
 <extra>::
 	This can be any options that the archiver backend understands.
 	See next section.
+
+--owner=<name>[:<uid>]::
+	Force NAME as owner and UID as uid for the files in the tar
+	archive.  If UID is not supplied, it would be inferred from
+	the current host's user database.  If --owner is given but
+	--group is not, the group name and gid are also inferred from
+	the current host's user database.
+
+--group=<name>[:<gid>]::
+	Force NAME as group and GID as gid for the files in the tar
+	archive.  If GID is not supplied, it would be inferred from
+	the current host's group database.
 
 --remote=<repo>::
 	Instead of making a tar archive from the local repository,
