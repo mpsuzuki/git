@@ -419,8 +419,8 @@ static void parse_treeish_arg(const char **argv,
 	  PARSE_OPT_NOARG | PARSE_OPT_NONEG | PARSE_OPT_HIDDEN, NULL, (p) }
 
 /*
- * --owner, --group options reject hexdigit, signed int values.
- * strtol(), atoi() are too permissive to similate this behaviour.
+ * GNU tar --owner, --group options reject hexdigit, signed int values.
+ * strtol(), atoi() are too permissive to simulate the behaviour.
  */
 #define STR_IS_DIGIT_OK 0
 #define STR_IS_NOT_DIGIT -1
@@ -457,7 +457,7 @@ static int try_as_simple_digit(const char *s, unsigned long *dst)
 	return STR_IS_DIGIT_OK;
 }
 
-static const char* get_whole_or_substr_after_colon(const char *s)
+static const char *skip_leading_colon(const char *s)
 {
 	const char *col_pos;
 
@@ -477,16 +477,16 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 		unsigned long *dst_ul)
 {
 	int r;
-	const char *t;
+	const char *s2;
 
-	t = get_whole_or_substr_after_colon(s);
-	if (t == s)
+	s2 = skip_leading_colon(s);
+	if (s2 == s)
 		return STR_HAS_NO_COLON;
 
-	r = try_as_simple_digit(t, dst_ul);
+	r = try_as_simple_digit(s2, dst_ul);
 	switch (r) {
 	case STR_IS_DIGIT_OK:
-		*dst_s = xstrndup(s, t-s-1);
+		*dst_s = xstrndup(s, s2 - s - 1);
 		return STR_IS_NAME_COLON_DIGIT;
 	case STR_IS_DIGIT_TOO_LARGE:
 		return STR_HAS_DIGIT_TOO_LARGE;
@@ -495,7 +495,7 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 	}
 }
 
-#define NAME_ID_GIVEN_BOTH 0
+#define NAME_ID_BOTH_GIVEN 0
 #define NAME_ID_ID_GUESSED 1
 #define NAME_ID_ID_UNTOUCHED 2
 #define NAME_ID_NAME_GUESSED 3
@@ -517,14 +517,14 @@ static int set_args_uname_uid(struct archiver_args *args,
 				    &(args->uid));
 	switch (r) {
 	case STR_IS_NAME_COLON_DIGIT:
-		return NAME_ID_GIVEN_BOTH;
+		return NAME_ID_BOTH_GIVEN;
 	case STR_HAS_DIGIT_TOO_LARGE:
 		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_HAS_DIGIT_BROKEN:
 		return NAME_ID_ERR_SYNTAX;
 	}
 
-	/* in below, the operand consists of 1 token */
+	/* the operand is known to be single token */
 
 	r = try_as_simple_digit(tar_owner, &(args->uid));
 	switch (r) {
@@ -540,7 +540,7 @@ static int set_args_uname_uid(struct archiver_args *args,
 		return NAME_ID_NAME_GUESSED;
 	}
 
-	/* the operand is not digit, take it as username */
+	/* the operand is known to be non-digit */
 
 	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
@@ -563,14 +563,14 @@ static int set_args_gname_gid(struct archiver_args *args,
 				    &(args->gid));
 	switch (r) {
 	case STR_IS_NAME_COLON_DIGIT:
-		return NAME_ID_GIVEN_BOTH;
+		return NAME_ID_BOTH_GIVEN;
 	case STR_HAS_DIGIT_TOO_LARGE:
 		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_HAS_DIGIT_BROKEN:
 		return NAME_ID_ERR_SYNTAX;
 	}
 
-	/* in below, the operand consists of 1 token */
+	/* the operand is known to be single token */
 
 	r = try_as_simple_digit(tar_group, &(args->gid));
 	switch (r) {
@@ -586,7 +586,7 @@ static int set_args_gname_gid(struct archiver_args *args,
 		return NAME_ID_NAME_GUESSED;
 	}
 
-	/* the operand is not digit, take it as groupname */
+	/* the operand is known to be non-digit */
 
 	args->gname = xstrdup(tar_group);
 	gr = getgrnam(tar_group);
@@ -597,7 +597,7 @@ static int set_args_gname_gid(struct archiver_args *args,
 }
 
 static void set_args_tar_owner_group(struct archiver_args *args,
-	const char *tar_owner, const char *tar_group)
+		const char *tar_owner, const char *tar_group)
 {
 	int r;
 
@@ -617,7 +617,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	case NAME_ID_ERR_ID_TOO_LARGE:
 	case NAME_ID_ERR_SYNTAX:
 		die("'%s': Invalid owner ID",
-		    get_whole_or_substr_after_colon(tar_owner));
+		    skip_leading_colon(tar_owner));
 	}
 	if (args->uid > MAX_ID_IN_TAR_US)
 		die("value %ld out of uid_t range 0..%ld", args->uid,
@@ -628,7 +628,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	case NAME_ID_ERR_ID_TOO_LARGE:
 	case NAME_ID_ERR_SYNTAX:
 		die("'%s': Invalid group ID",
-		    get_whole_or_substr_after_colon(tar_group));
+		    skip_leading_colon(tar_group));
 	}
 	if (args->gid > MAX_ID_IN_TAR_US)
 		die("value %ld out of gid_t range 0..%ld", args->gid,
