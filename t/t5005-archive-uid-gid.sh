@@ -82,14 +82,58 @@ test_expect_success 'test a case with only uid is given, owner=(current my uid)'
 	my_uname=`id -u -n` &&
 	my_gname=`id -g -n` &&
 	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test4.tar &&
-	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test4.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
 	return $?
 '
 
-test_expect_success 'test a case with nothing is given' '
-	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test5.tar &&
-	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar 0 0 root root &&
+test_expect_success 'test a case with no owner/group are given' '
+	git archive --format=tar HEAD > uid-gid-test5.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test5.tar 0 0 root root &&
 	return $?
 '
 
-test_done
+test_expect_success 'test a case with max uid for ustar' '
+	git archive --format=tar --owner nobody:209751 --group nogroup:1234 HEAD > uid-gid-test6.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test6.tar 209751 1234 nobody nogroup &&
+	return $?
+'
+
+test_expect_success 'test a case with max gid for ustar' '
+	git archive --format=tar --group nogroup:209751 --owner nobody:1234 HEAD > uid-gid-test7.tar &&
+	check_uid_gid_uname_gname_in_tar uid-gid-test7.tar 1234 209751 nobody nogroup &&
+	return $?
+'
+
+test_expect_success 'test a case with uid greater than 32-bit (must fail)' '
+	test_must_fail git archive --format=tar --owner 4294967296 --group 1234 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with gid greater than 32-bit (must fail)' '
+	test_must_fail git archive --format=tar --group 4294967296 --owner 1234 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with uid greater than ustar limit (must fail)' '
+	test_must_fail git archive --format=tar --owner 2097152 --group 1234 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with gid greater than ustar limit (must fail)' '
+	test_must_fail git archive --format=tar --group 2097152 --owner 1234 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with valid username plus uid greater than 32-bit (must fail)' '
+	test_must_fail git archive --format=tar --owner nobody:4294967296 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with valid groupname plus gid greater than 32-bit (must fail)' '
+	test_must_fail git archive --format=tar --group nogroup:4294967296 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with valid username plus uid greater than ustar limit (must fail)' '
+	test_must_fail git archive --format=tar --owner nobody:2097152 HEAD >/dev/null
+'
+
+test_expect_success 'test a case with valid groupname plus gid greater than ustar limit (must fail)' '
+	test_must_fail git archive --format=tar --group nogroup:2097152 HEAD >/dev/null
+'
+
+# test_done
