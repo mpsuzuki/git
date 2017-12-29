@@ -420,10 +420,10 @@ static void parse_treeish_arg(const char **argv,
 
 static int is_digit_only(const char *s)
 {
-  if (strlen(s) == strspn(s, "0123456789"))
-    return 1;
-  else
-    return 0;
+	if (strlen(s) == strspn(s, "0123456789"))
+		return 1;
+	else
+		return 0;
 }
 
 static void set_args_uname_uid(struct archiver_args *args,
