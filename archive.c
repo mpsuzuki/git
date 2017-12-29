@@ -8,7 +8,6 @@
 #include "parse-options.h"
 #include "unpack-trees.h"
 #include "dir.h"
-#include "git-compat-util.h"
 
 static char const * const archive_usage[] = {
 	N_("git archive [<options>] <tree-ish> [<path>...]"),
@@ -427,10 +426,10 @@ static int is_digit_only(const char *s)
 }
 
 static void set_args_uname_uid(struct archiver_args *args,
-		const char* tar_owner)
+		const char *tar_owner)
 {
-	const char* col_pos = NULL;
-	struct passwd* pw = NULL;
+	const char *col_pos = NULL;
+	struct passwd *pw = NULL;
 
 	if (!args || !tar_owner)
 		return;
@@ -463,10 +462,10 @@ static void set_args_uname_uid(struct archiver_args *args,
 }
 
 static void set_args_gname_gid(struct archiver_args *args,
-		const char* tar_group)
+		const char *tar_group)
 {
-	const char* col_pos = NULL;
-	struct group* gr = NULL;
+	const char *col_pos = NULL;
+	struct group *gr = NULL;
 
 	if (!args || !tar_group)
 		return;
@@ -523,8 +522,8 @@ static int parse_archive_args(int argc, const char **argv,
 	int i;
 	int list = 0;
 	int worktree_attributes = 0;
-	char *tar_owner = NULL;
-	char *tar_group = NULL;
+	const char *tar_owner = NULL;
+	const char *tar_group = NULL;
 	struct option opts[] = {
 		OPT_GROUP(""),
 		OPT_STRING(0, "format", &format, N_("fmt"), N_("archive format")),
