@@ -457,7 +457,7 @@ static int try_as_simple_digit(const char *s, unsigned long *dst)
 	return STR_IS_DIGIT_OK;
 }
 
-static const char* get_whole_or_token_after_colon(const char *s)
+static const char* get_whole_or_substr_after_colon(const char *s)
 {
 	const char *col_pos;
 
@@ -479,7 +479,7 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 	int r;
 	const char *t;
 
-	t = get_whole_or_token_after_colon(s);
+	t = get_whole_or_substr_after_colon(s);
 	if (t == s)
 		return STR_HAS_NO_COLON;
 
@@ -527,9 +527,10 @@ static int set_args_uname_uid(struct archiver_args *args,
 	/* in below, the operand consists of 1 token */
 
 	r = try_as_simple_digit(tar_owner, &(args->uid));
-	if (r == STR_IS_DIGIT_TOO_LARGE)
+	switch (r) {
+	case STR_IS_DIGIT_TOO_LARGE:
 		return UNAME_UID_ERR_ID_TOO_LARGE;
-	else if (r == STR_IS_DIGIT_OK) {
+	case STR_IS_DIGIT_OK:
 		pw = getpwuid(args->uid);
 		if (!pw) {
 			args->uname = xstrdup("");
@@ -625,7 +626,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	case UNAME_UID_ERR_ID_TOO_LARGE:
 	case UNAME_UID_ERR_SYNTAX:
 		die("'%s': Invalid owner ID",
-		    get_whole_or_token_after_colon(tar_owner));
+		    get_whole_or_substr_after_colon(tar_owner));
 	}
 	if (args->uid > MAX_UID_IN_TAR_US)
 		die("value %ld out of uid_t range 0..%ld", args->uid,
@@ -639,7 +640,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	case GNAME_GID_ERR_ID_TOO_LARGE:
 	case GNAME_GID_ERR_SYNTAX:
 		die("'%s': Invalid group ID",
-		    get_whole_or_token_after_colon(tar_group));
+		    get_whole_or_substr_after_colon(tar_group));
 	}
 	if (args->gid > MAX_GID_IN_TAR_US)
 		die("value %ld out of gid_t range 0..%ld", args->gid,
