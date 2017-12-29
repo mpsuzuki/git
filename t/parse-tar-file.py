@@ -28,7 +28,11 @@ for opt in optlist:
 if len(infos_to_print) == 0:
   infos_to_print = ["uid", "gid", "uname", "gname", "name"]
 
-tar = tarfile.open( args[0] )
+if len(args) > 0:
+  tar = tarfile.open( path=args[0], mode="r|" )
+else:
+  tar = tarfile.open( mode="r|", fileobj=sys.stdin )
+
 out_lines = []
 for tarinfo in tar:
   infos = []
