@@ -65,16 +65,16 @@ OPTIONS
 	See next section.
 
 --owner=<name>[:<uid>]::
-	Force NAME as owner and UID as uid for the files in the tar
-	archive.  If UID is not supplied, it would be inferred from
-	the current host's user database.  If --owner is given but
-	--group is not, the group name and gid are also inferred from
-	the current host's user database.
+	Force <name> as owner and <uid> as uid for the files in the tar
+	archive.  If <uid> is not supplied, <name> can be either a user
+	name or numeric UID.  In this case the missing part (UID or
+	name) will be inferred from the current host's user database.
 
 --group=<name>[:<gid>]::
-	Force NAME as group and GID as gid for the files in the tar
-	archive.  If GID is not supplied, it would be inferred from
-	the current host's group database.
+	Force <name> as group and <gid> as gid for the files in the tar
+	archive.  If <gid> is not supplied, <name> can be either a group
+	name or numeric GID.  In this case the missing part (GID or
+	name) will be inferred from the current host's group database.
 
 --remote=<repo>::
 	Instead of making a tar archive from the local repository,
