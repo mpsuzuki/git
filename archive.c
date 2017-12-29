@@ -608,9 +608,9 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	args->gid = 0;
 
 	/*
-	 * GNU tar --format=ustat checks if uid is in 0..209751.
+	 * GNU tar --format=ustar checks if uid is in 0..209751.
 	 * Too long digit string could not be dealt as numeric,
-	 * it is rejected as a syntax error without range check.
+	 * it is rejected as a syntax error before range check.
 	 */
 	r = set_args_uname_uid(args, tar_owner);
 	switch (r) {
