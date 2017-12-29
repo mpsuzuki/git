@@ -521,10 +521,13 @@ static int set_args_gname_gid(struct archiver_args *args,
 static void set_args_tar_owner_group(struct archiver_args *args,
 	const char *tar_owner, const char *tar_group)
 {
+	/* initialize by default values */
 	args->uname = xstrdup("root");
 	args->gname = xstrdup("root");
 	args->uid = 0;
 	args->gid = 0;
+
+	/* try to fill. NULL arguments are checked by themselves */
 	set_args_uname_uid(args, tar_owner);
 	set_args_gname_gid(args, tar_group);
 }
