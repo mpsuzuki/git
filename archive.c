@@ -418,14 +418,29 @@ static void parse_treeish_arg(const char **argv,
 	{ OPTION_SET_INT, (s), NULL, (v), NULL, "", \
 	  PARSE_OPT_NOARG | PARSE_OPT_NONEG | PARSE_OPT_HIDDEN, NULL, (p) }
 
-static void set_args_uname_uid(struct archiver_args *args,
-		const char* tar_owner, int set_gid_too)
+static int is_digit_only(const char *s)
+{
+  if (strlen(s) == strspn(s, "0123456789"))
+    return 1;
+  else
+    return 0;
+}
+
+#define UNAME_UID_GIVEN_BOTH 0
+#define UNAME_UID_FILLED_UID 1
+#define UNAME_UID_EMPTY_UID -1
+#define UNAME_UID_FILLED_UNAME 2
+#define UNAME_UID_EMPTY_UNAME -2
+#define UNAME_UID_ERR_PARAMS -128
+
+static int set_args_uname_uid(struct archiver_args *args,
+		const char* tar_owner)
 {
 	const char* col_pos = NULL;
 	struct passwd* pw = NULL;
 
 	if (!args || !tar_owner)
-		return;
+		return UNAME_UID_ERR_PARAMS;
 
 	/* check if the operand consists of 2 tokens */
 
@@ -433,42 +448,45 @@ static void set_args_uname_uid(struct archiver_args *args,
 	if (col_pos) {
 		args->uname = xstrndup(tar_owner, col_pos - tar_owner);
 		args->uid = atoi(col_pos + 1);
-		return;
+		return UNAME_UID_GIVEN_BOTH;
 	}
 
 	/* in below, the operand consists of 1 token */
 
-	/* check if the operand is digit only */
-	if (strlen(tar_owner) == strspn(tar_owner, "0123456789")) {
+	/* check if the operand is digit */
+	if (is_digit_only(tar_owner)) {
 		args->uid = atoi(tar_owner);
 		pw = getpwuid(args->uid);
-		if (pw)
-			args->uname = xstrdup(pw->pw_name);
-		return;
+		if (!pw)
+			return UNAME_UID_EMPTY_UNAME;
+		args->uname = xstrdup(pw->pw_name);
+		return UNAME_UID_FILLED_UNAME;
 	}
 
-	/* in below, the operand is not digit, take it as username */
-
+	/* the operand is not digit, take it as username */
 	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
 	if (!pw)
-		return;
-
+		return UNAME_UID_EMPTY_UID;
 	args->uid = pw->pw_uid;
-	if (set_gid_too)
-		args->gid = pw->pw_gid;
-
-	return;
+	return UNAME_UID_FILLED_UID;
 }
 
-static void set_args_gname_gid(struct archiver_args *args,
+#define GNAME_GID_GIVEN_BOTH 0
+#define GNAME_GID_FILLED_GID 1
+#define GNAME_GID_EMPTY_GID -1
+#define GNAME_GID_FILLED_GNAME 2
+#define GNAME_GID_EMPTY_GNAME -2
+#define GNAME_GID_ERR_PARAMS -128
+
+static int set_args_gname_gid(struct archiver_args *args,
 		const char* tar_group)
 {
 	const char* col_pos = NULL;
 	struct group* gr = NULL;
 
 	if (!args || !tar_group)
-		return;
+		return GNAME_GID_ERR_PARAMS;
 
 	/* check if the operand consists of 2 tokens */
 
@@ -476,28 +494,40 @@ static void set_args_gname_gid(struct archiver_args *args,
 	if (col_pos) {
 		args->gname = xstrndup(tar_group, col_pos - tar_group);
 		args->gid = atoi(col_pos + 1);
-		return;
+		return GNAME_GID_GIVEN_BOTH;
 	}
 
 	/* in below, the operand consists of 1 token */
 
 	/* check if the operand is digit only */
-	if (strlen(tar_group) == strspn(tar_group, "0123456789")) {
+	if (is_digit_only(tar_group)) {
 		args->gid = atoi(tar_group);
 		gr = getgrgid(args->gid);
-		if (gr)
-			args->gname = xstrdup(gr->gr_name);
-		return;
+		if (!gr)
+			return GNAME_GID_EMPTY_GNAME;
+		args->gname = xstrdup(gr->gr_name);
+		return GNAME_GID_FILLED_GNAME;
 	}
 
-	/* in below, the operand is not digit, take it as groupname */
-
+	/* the operand is not digit, take it as groupname */
 	args->gname = xstrdup(tar_group);
 	gr = getgrnam(tar_group);
-	if (gr)
-		args->gid = gr->gr_gid;
+	if (!gr)
+		return GNAME_GID_EMPTY_GID;
 
-	return;
+	args->gid = gr->gr_gid;
+	return GNAME_GID_FILLED_GID;
+}
+
+static void set_args_tar_owner_group(struct archiver_args *args,
+	char *tar_owner, char *tar_group)
+{
+	args->uname = xstrdup("root");
+	args->gname = xstrdup("root");
+	args->uid = 0;
+	args->gid = 0;
+	set_args_uname_uid(args, tar_owner);
+	set_args_gname_gid(args, tar_group);
 }
 
 static int parse_archive_args(int argc, const char **argv,
@@ -594,15 +624,7 @@ static int parse_archive_args(int argc, const char **argv,
 	args->baselen = strlen(base);
 	args->worktree_attributes = worktree_attributes;
 
-	args->uname = NULL;
-	args->gname = NULL;
-	args->uid = 0;
-	args->gid = 0;
-	set_args_uname_uid(args,
-		tar_owner,
-		1 /* init args->gid by pw, if resolved */);
-	set_args_gname_gid(args,
-		tar_group);
+	set_args_tar_owner_group(args, tar_owner, tar_group);
 
 	return argc;
 }
