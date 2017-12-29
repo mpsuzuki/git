@@ -32,7 +32,6 @@ check_uid_gid_uname_gname_in_tar() {
 	then
 		echo "(some) gid differs from the specified value"
 		return $?
-		exit $?
 	fi
 
 	uname=`python "$TEST_DIRECTORY"/t5005/parse-tar-file.py --print=uname --fail-if-multi $1`
