@@ -419,8 +419,8 @@ static void parse_treeish_arg(const char **argv,
 	  PARSE_OPT_NOARG | PARSE_OPT_NONEG | PARSE_OPT_HIDDEN, NULL, (p) }
 
 /*
- * GNU tar does not accept hexdigit uid, signed uid, etc.
- * thus strtol() or atoi() is too permissive.
+ * --owner, --group options reject hexdigit, signed int values.
+ * strtol(), atoi() are too permissive to similate this behaviour.
  */
 #define STR_IS_DIGIT_OK 0
 #define STR_IS_DIGIT_TOO_LARGE -1
@@ -443,9 +443,29 @@ static int try_as_simple_digit(const char *s, unsigned long *dst)
 		return STR_IS_DIGIT_TOO_LARGE;
 	}
 
+#if ULONG_MAX > 0xFFFFFFFFUL
+	/*
+	 * --owner, --group rejects uid/gid greater than 32-bit
+	 * limits, even on 64-bit platforms.
+	 */
+	if (ul > 0xFFFFFFFFUL)
+		return STR_IS_DIGIT_TOO_LARGE;
+#endif
+
 	if (dst)
 		*dst = ul;
 	return STR_IS_DIGIT_OK;
+}
+
+static const char* get_whole_or_token_after_colon(const char *s)
+{
+	const char *col_pos;
+
+	col_pos = strchr(s, ':');
+	if (!col_pos)
+		return s;
+
+	return (col_pos + 1);
 }
 
 #define STR_IS_NAME_COLON_DIGIT 0
@@ -457,16 +477,16 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 		unsigned long *dst_ul)
 {
 	int r;
-	const char *col_pos;
+	const char *t;
 
-	col_pos = strchr(s, ':');
-	if (!col_pos)
+	t = get_whole_or_token_after_colon(s);
+	if (t == s)
 		return STR_HAS_NO_COLON;
 
-	r = try_as_simple_digit(col_pos + 1, dst_ul);
+	r = try_as_simple_digit(t, dst_ul);
 	switch (r) {
 	case STR_IS_DIGIT_OK:
-		*dst_s = xstrndup(s, col_pos - s);
+		*dst_s = xstrndup(s, t-s-1);
 		return STR_IS_NAME_COLON_DIGIT;
 	case STR_IS_DIGIT_TOO_LARGE:
 		return STR_HAS_DIGIT_TOO_LARGE;
@@ -507,7 +527,7 @@ static int set_args_uname_uid(struct archiver_args *args,
 	/* in below, the operand consists of 1 token */
 
 	r = try_as_simple_digit(tar_owner, &(args->uid));
-	if (r == STR_HAS_DIGIT_TOO_LARGE)
+	if (r == STR_IS_DIGIT_TOO_LARGE)
 		return UNAME_UID_ERR_ID_TOO_LARGE;
 	else if (r == STR_IS_DIGIT_OK) {
 		pw = getpwuid(args->uid);
@@ -561,9 +581,10 @@ static int set_args_gname_gid(struct archiver_args *args,
 	/* in below, the operand consists of 1 token */
 
 	r = try_as_simple_digit(tar_group, &(args->gid));
-	if (r == STR_HAS_DIGIT_TOO_LARGE)
+	switch (r) {
+	case STR_IS_DIGIT_TOO_LARGE:
 		return GNAME_GID_ERR_ID_TOO_LARGE;
-	else if (r == STR_IS_DIGIT_OK) {
+	case STR_IS_DIGIT_OK:
 		gr = getgrgid(args->gid);
 		if (!gr) {
 			args->gname = xstrdup("");
@@ -603,11 +624,12 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	switch (r) {
 	case UNAME_UID_ERR_ID_TOO_LARGE:
 	case UNAME_UID_ERR_SYNTAX:
-		die("'%s': Invalid owner ID", strchr(tar_owner, ':'));
+		die("'%s': Invalid owner ID",
+		    get_whole_or_token_after_colon(tar_owner));
 	}
 	if (args->uid > MAX_UID_IN_TAR_US)
-		die("value '%ld' out of uid_t range 0..%ld",
-		    args->uid, MAX_UID_IN_TAR_US);
+		die("value %ld out of uid_t range 0..%ld", args->uid,
+		     MAX_UID_IN_TAR_US);
 
 	/*
 	 * Check as uid.
@@ -616,11 +638,12 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	switch (r) {
 	case GNAME_GID_ERR_ID_TOO_LARGE:
 	case GNAME_GID_ERR_SYNTAX:
-		die("'%s': Invalid group ID", strchr(tar_group, ':'));
+		die("'%s': Invalid group ID",
+		    get_whole_or_token_after_colon(tar_group));
 	}
 	if (args->gid > MAX_GID_IN_TAR_US)
-		die("value '%ld' out of gid_t range 0..%ld",
-		    args->gid, MAX_GID_IN_TAR_US);
+		die("value %ld out of gid_t range 0..%ld", args->gid,
+		    MAX_GID_IN_TAR_US);
 }
 
 static int parse_archive_args(int argc, const char **argv,
