@@ -204,8 +204,8 @@ static void prepare_header(struct archiver_args *args,
 	xsnprintf(header->size, sizeof(header->size), "%011lo", S_ISREG(mode) ? size : 0);
 	xsnprintf(header->mtime, sizeof(header->mtime), "%011lo", (unsigned long) args->time);
 
-	xsnprintf(header->uid, sizeof(header->uid), "%07o", args->uid);
-	xsnprintf(header->gid, sizeof(header->gid), "%07o", args->gid);
+	xsnprintf(header->uid, sizeof(header->uid), "%07lo", args->uid);
+	xsnprintf(header->gid, sizeof(header->gid), "%07lo", args->gid);
 	strlcpy(header->uname, args->uname, sizeof(header->uname));
 	strlcpy(header->gname, args->gname, sizeof(header->gname));
 	xsnprintf(header->devmajor, sizeof(header->devmajor), "%07o", 0);
