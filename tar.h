@@ -5,6 +5,9 @@
 #define TYPEFLAG_GLOBAL_HEADER	'g'
 #define TYPEFLAG_EXT_HEADER	'x'
 
+#define MAX_UID_IN_TAR_US	0x1FFFFFUL
+#define MAX_GID_IN_TAR_US	0x1FFFFFUL
+
 struct ustar_header {
 	char name[100];		/*   0 */
 	char mode[8];		/* 100 */
