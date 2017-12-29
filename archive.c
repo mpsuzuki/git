@@ -450,18 +450,16 @@ static void set_args_uname_uid(struct archiver_args *args,
 	if (is_digit_only(tar_owner)) {
 		args->uid = atoi(tar_owner);
 		pw = getpwuid(args->uid);
-		if (!pw)
-			return;
-		args->uname = xstrdup(pw->pw_name);
+		if (pw)
+			args->uname = xstrdup(pw->pw_name);
 		return;
 	}
 
 	/* the operand is not digit, take it as username */
 	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
-	if (!pw)
-		return;
-	args->uid = pw->pw_uid;
+	if (pw)
+		args->uid = pw->pw_uid;
 }
 
 static void set_args_gname_gid(struct archiver_args *args,
@@ -488,19 +486,16 @@ static void set_args_gname_gid(struct archiver_args *args,
 	if (is_digit_only(tar_group)) {
 		args->gid = atoi(tar_group);
 		gr = getgrgid(args->gid);
-		if (!gr)
-			return;
-		args->gname = xstrdup(gr->gr_name);
+		if (gr)
+			args->gname = xstrdup(gr->gr_name);
 		return;
 	}
 
 	/* the operand is not digit, take it as groupname */
 	args->gname = xstrdup(tar_group);
 	gr = getgrnam(tar_group);
-	if (!gr)
-		return;
-
-	args->gid = gr->gr_gid;
+	if (gr)
+		args->gid = gr->gr_gid;
 }
 
 static void set_args_tar_owner_group(struct archiver_args *args,
