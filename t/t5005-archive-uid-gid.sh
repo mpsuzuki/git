@@ -53,8 +53,7 @@ git commit -m "uid-gid-test" 2>/dev/null 1>/dev/null
 test_expect_success 'test a case with explicitly specified name/id, owner=nobody:1234 group=nogroup:5678' '
 	git archive --format=tar --owner nobody:1234 --group nogroup:5678 HEAD > uid-gid-test1.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test1.tar 1234 5678 nobody nogroup &&
-	test_result=$? &&
-	return ${test_result}
+	return $?
 '
 
 test_expect_success 'test a case with only string is given, owner=(current my name) group=(current my group)' '
@@ -64,8 +63,7 @@ test_expect_success 'test a case with only string is given, owner=(current my na
 	my_gname=`id -g -n` &&
 	git archive --format=tar --owner ${my_uname} --group ${my_gname} HEAD > uid-gid-test2.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test2.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
-	test_result=$? &&
-	return ${test_result}
+	return $?
 '
 
 test_expect_success 'test a case with only number is given, owner=(current my uid) group=(current my gid)' '
@@ -75,8 +73,7 @@ test_expect_success 'test a case with only number is given, owner=(current my ui
 	my_gname=`id -g -n` &&
 	git archive --format=tar --owner ${my_uid} --group ${my_gid} HEAD > uid-gid-test3.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
-	test_result=$? &&
-	return ${test_result}
+	return $?
 '
 
 test_expect_success 'test a case with only uid is given, owner=(current my uid)' '
@@ -86,15 +83,13 @@ test_expect_success 'test a case with only uid is given, owner=(current my uid)'
 	my_gname=`id -g -n` &&
 	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test4.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar ${my_uid} ${my_gid} ${my_uname} ${my_gname} &&
-	test_result=$? &&
-	return ${test_result}
+	return $?
 '
 
 test_expect_success 'test a case with nothing is given' '
 	git archive --format=tar --owner ${my_uid} HEAD > uid-gid-test5.tar &&
 	check_uid_gid_uname_gname_in_tar uid-gid-test3.tar 0 0 root root &&
-	test_result=$? &&
-	return ${test_result}
+	return $?
 '
 
 test_done
