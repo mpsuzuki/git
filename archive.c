@@ -423,8 +423,8 @@ static void parse_treeish_arg(const char **argv,
  * strtol(), atoi() are too permissive to similate this behaviour.
  */
 #define STR_IS_DIGIT_OK 0
-#define STR_IS_DIGIT_TOO_LARGE -1
-#define STR_HAS_NON_DIGIT_CHAR -2
+#define STR_HAS_NON_DIGIT_CHAR -1
+#define STR_IS_DIGIT_TOO_LARGE -2
 
 static int try_as_simple_digit(const char *s, unsigned long *dst)
 {
