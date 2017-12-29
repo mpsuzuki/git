@@ -426,9 +426,9 @@ static int is_digit_only(const char *s)
 }
 
 #define UNAME_UID_GIVEN_BOTH 0
-#define UNAME_UID_FILLED_UID 1
+#define UNAME_UID_GUESSED_UID 1
 #define UNAME_UID_EMPTY_UID -1
-#define UNAME_UID_FILLED_UNAME 2
+#define UNAME_UID_GUESSED_UNAME 2
 #define UNAME_UID_EMPTY_UNAME -2
 #define UNAME_UID_ERR_PARAMS -128
 
@@ -459,7 +459,7 @@ static int set_args_uname_uid(struct archiver_args *args,
 		if (!pw)
 			return UNAME_UID_EMPTY_UNAME;
 		args->uname = xstrdup(pw->pw_name);
-		return UNAME_UID_FILLED_UNAME;
+		return UNAME_UID_GUESSED_UNAME;
 	}
 
 	/* the operand is not digit, take it as username */
@@ -468,13 +468,13 @@ static int set_args_uname_uid(struct archiver_args *args,
 	if (!pw)
 		return UNAME_UID_EMPTY_UID;
 	args->uid = pw->pw_uid;
-	return UNAME_UID_FILLED_UID;
+	return UNAME_UID_GUESSED_UID;
 }
 
 #define GNAME_GID_GIVEN_BOTH 0
-#define GNAME_GID_FILLED_GID 1
+#define GNAME_GID_GUESSED_GID 1
 #define GNAME_GID_EMPTY_GID -1
-#define GNAME_GID_FILLED_GNAME 2
+#define GNAME_GID_GUESSED_GNAME 2
 #define GNAME_GID_EMPTY_GNAME -2
 #define GNAME_GID_ERR_PARAMS -128
 
@@ -505,7 +505,7 @@ static int set_args_gname_gid(struct archiver_args *args,
 		if (!gr)
 			return GNAME_GID_EMPTY_GNAME;
 		args->gname = xstrdup(gr->gr_name);
-		return GNAME_GID_FILLED_GNAME;
+		return GNAME_GID_GUESSED_GNAME;
 	}
 
 	/* the operand is not digit, take it as groupname */
@@ -515,7 +515,7 @@ static int set_args_gname_gid(struct archiver_args *args,
 		return GNAME_GID_EMPTY_GID;
 
 	args->gid = gr->gr_gid;
-	return GNAME_GID_FILLED_GID;
+	return GNAME_GID_GUESSED_GID;
 }
 
 static void set_args_tar_owner_group(struct archiver_args *args,
