@@ -426,21 +426,14 @@ static int is_digit_only(const char *s)
     return 0;
 }
 
-#define UNAME_UID_GIVEN_BOTH 0
-#define UNAME_UID_FILLED_UID 1
-#define UNAME_UID_EMPTY_UID -1
-#define UNAME_UID_FILLED_UNAME 2
-#define UNAME_UID_EMPTY_UNAME -2
-#define UNAME_UID_ERR_PARAMS -128
-
-static int set_args_uname_uid(struct archiver_args *args,
+static void set_args_uname_uid(struct archiver_args *args,
 		const char* tar_owner)
 {
 	const char* col_pos = NULL;
 	struct passwd* pw = NULL;
 
 	if (!args || !tar_owner)
-		return UNAME_UID_ERR_PARAMS;
+		return;
 
 	/* check if the operand consists of 2 tokens */
 
@@ -448,7 +441,7 @@ static int set_args_uname_uid(struct archiver_args *args,
 	if (col_pos) {
 		args->uname = xstrndup(tar_owner, col_pos - tar_owner);
 		args->uid = atoi(col_pos + 1);
-		return UNAME_UID_GIVEN_BOTH;
+		return;
 	}
 
 	/* in below, the operand consists of 1 token */
@@ -458,35 +451,27 @@ static int set_args_uname_uid(struct archiver_args *args,
 		args->uid = atoi(tar_owner);
 		pw = getpwuid(args->uid);
 		if (!pw)
-			return UNAME_UID_EMPTY_UNAME;
+			return;
 		args->uname = xstrdup(pw->pw_name);
-		return UNAME_UID_FILLED_UNAME;
+		return;
 	}
 
 	/* the operand is not digit, take it as username */
 	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
 	if (!pw)
-		return UNAME_UID_EMPTY_UID;
+		return;
 	args->uid = pw->pw_uid;
-	return UNAME_UID_FILLED_UID;
 }
 
-#define GNAME_GID_GIVEN_BOTH 0
-#define GNAME_GID_FILLED_GID 1
-#define GNAME_GID_EMPTY_GID -1
-#define GNAME_GID_FILLED_GNAME 2
-#define GNAME_GID_EMPTY_GNAME -2
-#define GNAME_GID_ERR_PARAMS -128
-
-static int set_args_gname_gid(struct archiver_args *args,
+static void set_args_gname_gid(struct archiver_args *args,
 		const char* tar_group)
 {
 	const char* col_pos = NULL;
 	struct group* gr = NULL;
 
 	if (!args || !tar_group)
-		return GNAME_GID_ERR_PARAMS;
+		return;
 
 	/* check if the operand consists of 2 tokens */
 
@@ -494,7 +479,7 @@ static int set_args_gname_gid(struct archiver_args *args,
 	if (col_pos) {
 		args->gname = xstrndup(tar_group, col_pos - tar_group);
 		args->gid = atoi(col_pos + 1);
-		return GNAME_GID_GIVEN_BOTH;
+		return;
 	}
 
 	/* in below, the operand consists of 1 token */
@@ -504,19 +489,18 @@ static int set_args_gname_gid(struct archiver_args *args,
 		args->gid = atoi(tar_group);
 		gr = getgrgid(args->gid);
 		if (!gr)
-			return GNAME_GID_EMPTY_GNAME;
+			return;
 		args->gname = xstrdup(gr->gr_name);
-		return GNAME_GID_FILLED_GNAME;
+		return;
 	}
 
 	/* the operand is not digit, take it as groupname */
 	args->gname = xstrdup(tar_group);
 	gr = getgrnam(tar_group);
 	if (!gr)
-		return GNAME_GID_EMPTY_GID;
+		return;
 
 	args->gid = gr->gr_gid;
-	return GNAME_GID_FILLED_GID;
 }
 
 static void set_args_tar_owner_group(struct archiver_args *args,
