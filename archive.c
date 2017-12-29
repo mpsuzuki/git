@@ -504,17 +504,73 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 #define NAME_ID_ERR_SYNTAX -127
 #define NAME_ID_ERR_PARAMS -128
 
-static int set_args_uname_uid(struct archiver_args *args,
-		const char *tar_owner)
+static void set_name_pp_id_p(struct archiver_args *args, 
+		const char ***name_ppp,
+		unsigned long **id_pp, int is_owner)
+{
+	if (is_owner) {
+		*name_ppp = &(args->uname);
+		*id_pp = &(args->uid);
+	} else {
+		*name_ppp = &(args->gname);
+		*id_pp = &(args->gid);
+	}
+}
+
+typedef union {
+	struct passwd *pw;
+	struct group *gr;
+	void *v;
+} pw_gr_u;
+
+static void set_pw_gr_by_name(pw_gr_u *pw_gr_up, const char *s,
+		int is_owner)
+{
+	if (is_owner)
+		pw_gr_up->pw = getpwnam(s);
+	else
+		pw_gr_up->gr = getgrnam(s);
+}
+
+static void set_pw_gr_by_id(pw_gr_u *pw_gr_up, unsigned long id,
+		int is_owner)
+{
+	if (is_owner)
+		pw_gr_up->pw = getpwuid(id);
+	else
+		pw_gr_up->gr = getgrgid(id);
+}
+
+static const char* get_name_from_pw_gr(pw_gr_u *pw_gr_up, int is_owner)
+{
+	if (is_owner)
+		return pw_gr_up->pw->pw_name;
+	else
+		return pw_gr_up->gr->gr_name;
+}
+
+static unsigned long get_id_from_pw_gr(pw_gr_u *pw_gr_up, int is_owner)
+{
+	if (is_owner)
+		return pw_gr_up->pw->pw_uid;
+	else
+		return pw_gr_up->gr->gr_gid;
+}
+
+static int set_args_name_id(struct archiver_args *args,
+		const char *s, int is_owner)
 {
 	int r;
-	struct passwd *pw = NULL;
+	pw_gr_u u;
+	const char  **name_pp;
+	unsigned long *id_p;
 
-	if (!args || !tar_owner)
+	if (!args || !s)
 		return NAME_ID_ERR_PARAMS;
 
-	r = try_as_name_colon_digit(tar_owner, &(args->uname),
-				    &(args->uid));
+	set_name_pp_id_p(args, &name_pp, &id_p, is_owner); 
+
+	r = try_as_name_colon_digit(s, name_pp, id_p);
 	switch (r) {
 	case STR_IS_NAME_COLON_DIGIT:
 		return NAME_ID_GIVEN_BOTH;
@@ -526,73 +582,27 @@ static int set_args_uname_uid(struct archiver_args *args,
 
 	/* in below, the operand consists of 1 token */
 
-	r = try_as_simple_digit(tar_owner, &(args->uid));
+	r = try_as_simple_digit(s, id_p);
 	switch (r) {
 	case STR_IS_DIGIT_TOO_LARGE:
 		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_IS_DIGIT_OK:
-		pw = getpwuid(args->uid);
-		if (!pw) {
-			args->uname = xstrdup("");
+		set_pw_gr_by_id(&u, *id_p, is_owner);
+		if (!u.v) {
+			*name_pp = xstrdup("");
 			return NAME_ID_NAME_EMPTY;
 		}
-		args->uname = xstrdup(pw->pw_name);
+		*name_pp = xstrdup(get_name_from_pw_gr(&u, is_owner));
 		return NAME_ID_NAME_GUESSED;
 	}
 
 	/* the operand is not digit, take it as username */
 
-	args->uname = xstrdup(tar_owner);
-	pw = getpwnam(tar_owner);
-	if (!pw)
+	*name_pp = xstrdup(s);
+	set_pw_gr_by_name(&u, s, is_owner);
+	if (!u.v)
 		return NAME_ID_ID_UNTOUCHED;
-	args->uid = pw->pw_uid;
-	return NAME_ID_ID_GUESSED;
-}
-
-static int set_args_gname_gid(struct archiver_args *args,
-		const char *tar_group)
-{
-	int r;
-	struct group *gr = NULL;
-
-	if (!args || !tar_group)
-		return NAME_ID_ERR_PARAMS;
-
-	r = try_as_name_colon_digit(tar_group, &(args->gname),
-				    &(args->gid));
-	switch (r) {
-	case STR_IS_NAME_COLON_DIGIT:
-		return NAME_ID_GIVEN_BOTH;
-	case STR_HAS_DIGIT_TOO_LARGE:
-		return NAME_ID_ERR_ID_TOO_LARGE;
-	case STR_HAS_DIGIT_BROKEN:
-		return NAME_ID_ERR_SYNTAX;
-	}
-
-	/* in below, the operand consists of 1 token */
-
-	r = try_as_simple_digit(tar_group, &(args->gid));
-	switch (r) {
-	case STR_IS_DIGIT_TOO_LARGE:
-		return NAME_ID_ERR_ID_TOO_LARGE;
-	case STR_IS_DIGIT_OK:
-		gr = getgrgid(args->gid);
-		if (!gr) {
-			args->gname = xstrdup("");
-			return NAME_ID_NAME_EMPTY;
-		}
-		args->gname = xstrdup(gr->gr_name);
-		return NAME_ID_NAME_GUESSED;
-	}
-
-	/* the operand is not digit, take it as groupname */
-
-	args->gname = xstrdup(tar_group);
-	gr = getgrnam(tar_group);
-	if (!gr)
-		return NAME_ID_ID_UNTOUCHED;
-	args->gid = gr->gr_gid;
+	*id_p = get_id_from_pw_gr(&u, is_owner);
 	return NAME_ID_ID_GUESSED;
 }
 
@@ -612,7 +622,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	 * Too long digit string could not be dealt as numeric,
 	 * it is rejected as a syntax error before range check.
 	 */
-	r = set_args_uname_uid(args, tar_owner);
+	r = set_args_name_id(args, tar_owner, 1);
 	switch (r) {
 	case NAME_ID_ERR_ID_TOO_LARGE:
 	case NAME_ID_ERR_SYNTAX:
@@ -623,7 +633,7 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 		die("value %ld out of uid_t range 0..%ld", args->uid,
 		     MAX_ID_IN_TAR_US);
 
-	r = set_args_gname_gid(args, tar_group);
+	r = set_args_name_id(args, tar_group, 0);
 	switch (r) {
 	case NAME_ID_ERR_ID_TOO_LARGE:
 	case NAME_ID_ERR_SYNTAX:
