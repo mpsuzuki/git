@@ -495,14 +495,14 @@ static int try_as_name_colon_digit(const char *s, const char **dst_s,
 	}
 }
 
-#define UNAME_UID_GIVEN_BOTH 0
-#define UNAME_UID_GUESSED_UID 1
-#define UNAME_UID_UNTOUCHED_UID -1
-#define UNAME_UID_GUESSED_UNAME 2
-#define UNAME_UID_EMPTY_UNAME -2
-#define UNAME_UID_ERR_ID_TOO_LARGE -126
-#define UNAME_UID_ERR_SYNTAX -127
-#define UNAME_UID_ERR_PARAMS -128
+#define NAME_ID_GIVEN_BOTH 0
+#define NAME_ID_ID_GUESSED 1
+#define NAME_ID_ID_UNTOUCHED 2
+#define NAME_ID_NAME_GUESSED 3
+#define NAME_ID_NAME_EMPTY 4
+#define NAME_ID_ERR_ID_TOO_LARGE -126
+#define NAME_ID_ERR_SYNTAX -127
+#define NAME_ID_ERR_PARAMS -128
 
 static int set_args_uname_uid(struct archiver_args *args,
 		const char *tar_owner)
@@ -511,17 +511,17 @@ static int set_args_uname_uid(struct archiver_args *args,
 	struct passwd *pw = NULL;
 
 	if (!args || !tar_owner)
-		return UNAME_UID_ERR_PARAMS;
+		return NAME_ID_ERR_PARAMS;
 
 	r = try_as_name_colon_digit(tar_owner, &(args->uname),
 				    &(args->uid));
 	switch (r) {
 	case STR_IS_NAME_COLON_DIGIT:
-		return UNAME_UID_GIVEN_BOTH;
+		return NAME_ID_GIVEN_BOTH;
 	case STR_HAS_DIGIT_TOO_LARGE:
-		return UNAME_UID_ERR_ID_TOO_LARGE;
+		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_HAS_DIGIT_BROKEN:
-		return UNAME_UID_ERR_SYNTAX;
+		return NAME_ID_ERR_SYNTAX;
 	}
 
 	/* in below, the operand consists of 1 token */
@@ -529,15 +529,15 @@ static int set_args_uname_uid(struct archiver_args *args,
 	r = try_as_simple_digit(tar_owner, &(args->uid));
 	switch (r) {
 	case STR_IS_DIGIT_TOO_LARGE:
-		return UNAME_UID_ERR_ID_TOO_LARGE;
+		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_IS_DIGIT_OK:
 		pw = getpwuid(args->uid);
 		if (!pw) {
 			args->uname = xstrdup("");
-			return UNAME_UID_EMPTY_UNAME;
+			return NAME_ID_NAME_EMPTY;
 		}
 		args->uname = xstrdup(pw->pw_name);
-		return UNAME_UID_GUESSED_UNAME;
+		return NAME_ID_NAME_GUESSED;
 	}
 
 	/* the operand is not digit, take it as username */
@@ -545,19 +545,10 @@ static int set_args_uname_uid(struct archiver_args *args,
 	args->uname = xstrdup(tar_owner);
 	pw = getpwnam(tar_owner);
 	if (!pw)
-		return UNAME_UID_UNTOUCHED_UID;
+		return NAME_ID_ID_UNTOUCHED;
 	args->uid = pw->pw_uid;
-	return UNAME_UID_GUESSED_UID;
+	return NAME_ID_ID_GUESSED;
 }
-
-#define GNAME_GID_GIVEN_BOTH 0
-#define GNAME_GID_GUESSED_GID 1
-#define GNAME_GID_UNTOUCHED_GID -1
-#define GNAME_GID_GUESSED_GNAME 2
-#define GNAME_GID_EMPTY_GNAME -2
-#define GNAME_GID_ERR_ID_TOO_LARGE -126
-#define GNAME_GID_ERR_SYNTAX -127
-#define GNAME_GID_ERR_PARAMS -128
 
 static int set_args_gname_gid(struct archiver_args *args,
 		const char *tar_group)
@@ -566,17 +557,17 @@ static int set_args_gname_gid(struct archiver_args *args,
 	struct group *gr = NULL;
 
 	if (!args || !tar_group)
-		return GNAME_GID_ERR_PARAMS;
+		return NAME_ID_ERR_PARAMS;
 
 	r = try_as_name_colon_digit(tar_group, &(args->gname),
 				    &(args->gid));
 	switch (r) {
 	case STR_IS_NAME_COLON_DIGIT:
-		return GNAME_GID_GIVEN_BOTH;
+		return NAME_ID_GIVEN_BOTH;
 	case STR_HAS_DIGIT_TOO_LARGE:
-		return GNAME_GID_ERR_ID_TOO_LARGE;
+		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_HAS_DIGIT_BROKEN:
-		return GNAME_GID_ERR_SYNTAX;
+		return NAME_ID_ERR_SYNTAX;
 	}
 
 	/* in below, the operand consists of 1 token */
@@ -584,15 +575,15 @@ static int set_args_gname_gid(struct archiver_args *args,
 	r = try_as_simple_digit(tar_group, &(args->gid));
 	switch (r) {
 	case STR_IS_DIGIT_TOO_LARGE:
-		return GNAME_GID_ERR_ID_TOO_LARGE;
+		return NAME_ID_ERR_ID_TOO_LARGE;
 	case STR_IS_DIGIT_OK:
 		gr = getgrgid(args->gid);
 		if (!gr) {
 			args->gname = xstrdup("");
-			return GNAME_GID_EMPTY_GNAME;
+			return NAME_ID_NAME_EMPTY;
 		}
 		args->gname = xstrdup(gr->gr_name);
-		return GNAME_GID_GUESSED_GNAME;
+		return NAME_ID_NAME_GUESSED;
 	}
 
 	/* the operand is not digit, take it as groupname */
@@ -600,9 +591,9 @@ static int set_args_gname_gid(struct archiver_args *args,
 	args->gname = xstrdup(tar_group);
 	gr = getgrnam(tar_group);
 	if (!gr)
-		return GNAME_GID_UNTOUCHED_GID;
+		return NAME_ID_ID_UNTOUCHED;
 	args->gid = gr->gr_gid;
-	return GNAME_GID_GUESSED_GID;
+	return NAME_ID_ID_GUESSED;
 }
 
 static void set_args_tar_owner_group(struct archiver_args *args,
@@ -623,28 +614,25 @@ static void set_args_tar_owner_group(struct archiver_args *args,
 	 */
 	r = set_args_uname_uid(args, tar_owner);
 	switch (r) {
-	case UNAME_UID_ERR_ID_TOO_LARGE:
-	case UNAME_UID_ERR_SYNTAX:
+	case NAME_ID_ERR_ID_TOO_LARGE:
+	case NAME_ID_ERR_SYNTAX:
 		die("'%s': Invalid owner ID",
 		    get_whole_or_substr_after_colon(tar_owner));
 	}
-	if (args->uid > MAX_UID_IN_TAR_US)
+	if (args->uid > MAX_ID_IN_TAR_US)
 		die("value %ld out of uid_t range 0..%ld", args->uid,
-		     MAX_UID_IN_TAR_US);
+		     MAX_ID_IN_TAR_US);
 
-	/*
-	 * Check as uid.
-	 */
 	r = set_args_gname_gid(args, tar_group);
 	switch (r) {
-	case GNAME_GID_ERR_ID_TOO_LARGE:
-	case GNAME_GID_ERR_SYNTAX:
+	case NAME_ID_ERR_ID_TOO_LARGE:
+	case NAME_ID_ERR_SYNTAX:
 		die("'%s': Invalid group ID",
 		    get_whole_or_substr_after_colon(tar_group));
 	}
-	if (args->gid > MAX_GID_IN_TAR_US)
+	if (args->gid > MAX_ID_IN_TAR_US)
 		die("value %ld out of gid_t range 0..%ld", args->gid,
-		    MAX_GID_IN_TAR_US);
+		    MAX_ID_IN_TAR_US);
 }
 
 static int parse_archive_args(int argc, const char **argv,
