@@ -244,6 +244,33 @@ long seek_to_next_block(FILE* fh, long block_size)
 		return (block_size - overflow);
 }
 
+size_t num_past_lines = 0;
+typedef struct past_line_t {
+	const char*  line;
+	struct past_line_t* next;
+} past_line_t;
+
+past_line_t  past_lines = {NULL, NULL};
+past_line_t* past_lines_begin;
+past_line_t* past_lines_end;
+
+void set_past_lines_begin_end()
+{
+	past_lines_begin = &past_lines;
+	past_lines_end   =  past_lines_begin;
+}
+
+int search_past_lines(const char* s)
+{
+	int i;
+	past_line_t *pl;
+	for (pl = past_lines_begin, i = 0 ; pl < past_lines_end; pl = pl->next, i ++) {
+		if (!strcmp(s, pl->line)) {
+			return i;
+		}	
+	}
+	return -1;
+}
 
 size_t feed_single_item_tarfile(FILE* fh, int* failed)
 {
@@ -273,9 +300,25 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 
 	line_buff = malloc(len_line);
 	fill_line_buff(line_buff, len_line, &hdr, "\t");
-	puts(line_buff);
-	free(line_buff);
 
+	if (!uniq) {
+		puts(line_buff);
+		free(line_buff);
+	}
+	else if (0 <= search_past_lines(line_buff)) {
+		if (fail_if_multi)
+			exit(2);
+		free(line_buff);
+	}
+	else {
+		past_lines_end->line = line_buff;
+		past_lines_end->next = malloc(sizeof(past_line_t));
+		past_lines_end->next->line = NULL;
+		past_lines_end->next->next = NULL;
+		past_lines_end = past_lines_end->next;
+		puts(line_buff);
+	}
+	
 	/* some padding between tar header and content */
 	seek_to_next_block(fh, USTAR_BLOCKSIZE);
 
@@ -295,6 +338,7 @@ int main(int argc, const char **argv)
 	int chunk_length;
 	int failed = 0;
 
+	set_past_lines_begin_end();
 	parse_args(argc, argv);
 
 	/* check nothing is inappropriate test */
