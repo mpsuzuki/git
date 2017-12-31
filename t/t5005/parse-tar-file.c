@@ -123,6 +123,16 @@ typedef struct {
 	char prefix[155];       /* 345 */
 } ustar_header_t;
 
+int is_empty_header(const char* hdr_c)
+{
+	int i;
+	for (i = 0; i < sizeof(ustar_header_t); i ++) {
+		if (hdr_c[i])
+			return 0;
+	}
+	return 1;
+}
+
 
 const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 {
@@ -135,6 +145,7 @@ const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 	default: return NULL;
 	}
 }
+
 
 int get_int_from_oct_str(const char* s, size_t len)
 {
@@ -179,6 +190,7 @@ size_t count_required_buff(ustar_header_t* hdr, size_t len_sep, int* failed)
 		case USTAR_GID:
 			int_buff = get_int_from_oct_str(dat, sizeof(hdr->uid));
 			if (int_buff < 0) {
+				fprintf(stderr, "*** cannot parse UID/GID from \"%s\"\n", dat);
 				*failed = -1;
 				return 0;
 			}
@@ -233,15 +245,24 @@ void fill_line_buff(char* line_buff, size_t len_line, ustar_header_t*  hdr, cons
 	}
 }
 
-long seek_to_next_block(FILE* fh, long block_size)
+long seek_to_next_block(FILE* fh, long block_size, int *failed)
 {
+	int ret_fseek; 
 	long pos, overflow;
 	pos = ftell(fh);
+	if (pos < 0) {
+		fprintf(stderr, "*** cannot detect current position of the stream\n");
+		*failed = -1;
+		return;
+	}
 	overflow = (pos % block_size);
 	if (overflow == 0)
 		return 0;
-	fseek(fh, block_size - overflow, SEEK_CUR);
-		return (block_size - overflow);
+	if (fseek(fh, block_size - overflow, SEEK_CUR)) {
+		*failed = -1;
+		return -1;
+	}
+	return (block_size - overflow);
 }
 
 size_t num_past_lines = 0;
@@ -285,13 +306,21 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 	else
 	if (1 != fread(&hdr, sizeof(hdr), 1, fh))
 	{
+		fprintf(stderr, "*** not EOF but cannot load a header anymore\n");
 		*failed = -1;
 		return 0;
 	}
 
-	len_line = count_required_buff(&hdr, strlen("\t"), failed);
-	if (*failed)
+	if (is_empty_header((const char*)&hdr)) {
+		fprintf(stderr, "*** empty header found, skip to next block\n");
+		seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
 		return 0;
+	}
+	len_line = count_required_buff(&hdr, strlen("\t"), failed);
+	if (*failed) {
+		fprintf(stderr, "*** cannot calculate required size to print\n");
+		return 0;
+	}
 
 	if (len_line == 0) {
 		puts("");
@@ -313,7 +342,8 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 		/* "--uniq" is given, but no same line in the past */
 		if (fail_if_multi && past_lines_begin->line != NULL) {
 			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", line_buff, past_lines_begin->line);
-			exit(2);
+			*failed = -2;
+			return;
 		}
 
 		past_lines_end->line = line_buff;
@@ -325,15 +355,23 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 	}
 	
 	/* some padding between tar header and content */
-	seek_to_next_block(fh, USTAR_BLOCKSIZE);
+	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+	if (*failed) {
+		fprintf(stderr, "*** fail in seeking to the content");
+		return;
+	}
 
 	/* skip content */
 	len_content = get_int_from_oct_str(hdr.size, sizeof(hdr.size));
-	if (len_content > 0 && 0 > fseek(fh, len_content, SEEK_CUR))
+	if (len_content > 0 && 0 > fseek(fh, len_content, SEEK_CUR)) {
+		fprintf(stderr, "*** fail in skipping the content\n");
 		*failed = -1;
+	}
 
 	/* some padding after content */
-	seek_to_next_block(fh, USTAR_BLOCKSIZE);
+	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+	if (*failed)
+		fprintf(stderr, "*** fail in seeking to the next block");
 	return;
 }
 
@@ -355,15 +393,21 @@ int main(int argc, const char **argv)
 	else
 		fh = fopen(pathname_tarfile, "r");
 
-	if (!fh)
+	if (!fh) {
+		if (pathname_tarfile)
+			fprintf(stderr, "*** cannot open %s\n", pathname_tarfile);
 		exit(-1);
+	}
 
 	do {
 		chunk_length = feed_single_item_tarfile(fh, &failed);
 	} while (!failed);
 
-	if (failed)
+	fclose(fh);
+	if (failed) {
+		fprintf(stderr, "*** parse failed\n");
 		exit(-2);
+	}
 
 	exit(0);
 }
