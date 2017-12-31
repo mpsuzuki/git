@@ -104,6 +104,7 @@ static int parse_args(int argc, const char **argv)
 }
 
 #define USTAR_BLOCKSIZE 512
+char block_buff[USTAR_BLOCKSIZE];
 typedef struct {
 	char name[100];         /*   0 */
 	char mode[8];           /* 100 */
@@ -245,23 +246,19 @@ void fill_line_buff(char* line_buff, size_t len_line, ustar_header_t*  hdr, cons
 	}
 }
 
+size_t pos = 0;
 long seek_to_next_block(FILE* fh, long block_size, int *failed)
 {
 	int ret_fseek; 
-	long pos, overflow;
-	pos = ftell(fh);
-	if (pos < 0) {
-		fprintf(stderr, "*** cannot detect current position of the stream\n");
-		*failed = -1;
-		return;
-	}
+	long overflow;
 	overflow = (pos % block_size);
 	if (overflow == 0)
 		return 0;
-	if (fseek(fh, block_size - overflow, SEEK_CUR)) {
+	if (1 != fread(block_buff, block_size - overflow, 1, fh)) {
 		*failed = -1;
 		return -1;
 	}
+	pos += (block_size - overflow);
 	return (block_size - overflow);
 }
 
@@ -301,7 +298,7 @@ size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 	char*  line_buff;
 	int i;
 
-	size_t hdr_begin = ftell(fh);
+	size_t hdr_begin = pos;
 
 	if (feof(fh))
 		return 0;
@@ -312,6 +309,7 @@ size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 		*failed = -1;
 		return 0;
 	}
+	pos += sizeof(hdr);
 
 	if (is_empty_header((const char*)&hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
@@ -324,12 +322,12 @@ size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 	len_line = count_required_buff(&hdr, strlen("\t"), failed);
 	if (*failed) {
 		fprintf(stderr, "*** cannot calculate required size to print\n");
-		return 0;
+		return sizeof(hdr);
 	}
 
 	if (len_line == 0) {
 		puts("");
-		return 0;
+		return sizeof(hdr);
 	}
 
 	line_buff = malloc(len_line);
@@ -348,7 +346,7 @@ size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 		if (fail_if_multi && past_lines_begin->line != NULL) {
 			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", line_buff, past_lines_begin->line);
 			*failed = -2;
-			return;
+			return sizeof(hdr);
 		}
 
 		past_lines_end->line = line_buff;
@@ -363,21 +361,28 @@ size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
 	if (*failed) {
 		fprintf(stderr, "*** fail in seeking to the content");
-		return;
+		return (pos - hdr_begin);
 	}
 
 	/* skip content */
 	len_content = get_int_from_oct_str(hdr.size, sizeof(hdr.size));
-	if (len_content > 0 && 0 > fseek(fh, len_content, SEEK_CUR)) {
-		fprintf(stderr, "*** fail in skipping the content\n");
-		*failed = -1;
+	if (len_content > 0) {
+		int l;
+		for (l = 0; l < len_content; l += USTAR_BLOCKSIZE) {
+			if (1 != fread(block_buff, USTAR_BLOCKSIZE, 1, fh)) {
+				fprintf(stderr, "*** fail in skipping the content\n");
+				*failed = -1;
+				return (pos - hdr_begin);
+			}
+			pos += USTAR_BLOCKSIZE;
+		}
 	}
 
 	/* some padding after content */
 	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
 	if (*failed)
 		fprintf(stderr, "*** fail in seeking to the next block");
-	return;
+	return (pos - hdr_begin);
 }
 
 int main(int argc, const char **argv)
@@ -408,7 +413,7 @@ int main(int argc, const char **argv)
 	do {
 		chunk_length = feed_single_item_tarfile(fh, &num_empty, &failed);
 		if (chunk_length == 0 && num_empty > 1) {
-			fprintf(stderr, "*** 2 empty headers found, end of tar\n");
+			fprintf(stderr, "*** 2 empty headers found, take them as the end of tar\n");
 			break;
 		}
 	} while (!failed);
