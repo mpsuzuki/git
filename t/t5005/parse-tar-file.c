@@ -293,7 +293,7 @@ int search_past_lines(const char* s)
 	return -1;
 }
 
-size_t feed_single_item_tarfile(FILE* fh, int* failed)
+size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
 {
 	ustar_header_t  hdr;
 	size_t  len_line;
@@ -301,21 +301,26 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 	char*  line_buff;
 	int i;
 
+	size_t hdr_begin = ftell(fh);
+
 	if (feof(fh))
 		return 0;
 	else
 	if (1 != fread(&hdr, sizeof(hdr), 1, fh))
 	{
-		fprintf(stderr, "*** not EOF but cannot load a header anymore\n");
+		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
 
 	if (is_empty_header((const char*)&hdr)) {
-		fprintf(stderr, "*** empty header found, skip to next block\n");
+		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
 		seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+		*num_empty = *num_empty + 1;
 		return 0;
 	}
+
+	*num_empty = 0;
 	len_line = count_required_buff(&hdr, strlen("\t"), failed);
 	if (*failed) {
 		fprintf(stderr, "*** cannot calculate required size to print\n");
@@ -380,6 +385,7 @@ int main(int argc, const char **argv)
 	FILE* fh;
 	int chunk_length;
 	int failed = 0;
+	int num_empty = 0;
 
 	set_past_lines_begin_end();
 	parse_args(argc, argv);
@@ -400,7 +406,11 @@ int main(int argc, const char **argv)
 	}
 
 	do {
-		chunk_length = feed_single_item_tarfile(fh, &failed);
+		chunk_length = feed_single_item_tarfile(fh, &num_empty, &failed);
+		if (chunk_length == 0 && num_empty > 1) {
+			fprintf(stderr, "*** 2 empty headers found, end of tar\n");
+			break;
+		}
 	} while (!failed);
 
 	fclose(fh);
