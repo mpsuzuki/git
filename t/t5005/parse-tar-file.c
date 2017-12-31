@@ -191,7 +191,7 @@ size_t count_required_buff(ustar_header_t* hdr, size_t len_sep, int* failed)
 			continue;
 		}
 
-		if (0 < i && i < num_infos_to_print - 1)
+		if (0 < i)
 			len_buff += len_sep;
 		len_buff += len_tok;
 	}
@@ -289,7 +289,7 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 		return 0;
 	}
 
-	len_line = count_required_buff(&hdr, sizeof("\t"), failed);
+	len_line = count_required_buff(&hdr, strlen("\t"), failed);
 	if (*failed)
 		return 0;
 
