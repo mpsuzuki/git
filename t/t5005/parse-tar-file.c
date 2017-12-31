@@ -306,11 +306,16 @@ size_t feed_single_item_tarfile(FILE* fh, int* failed)
 		free(line_buff);
 	}
 	else if (0 <= search_past_lines(line_buff)) {
-		if (fail_if_multi)
-			exit(2);
+		/* found same line in the past, do not print */
 		free(line_buff);
 	}
 	else {
+		/* "--uniq" is given, but no same line in the past */
+		if (fail_if_multi && past_lines_begin->line != NULL) {
+			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", line_buff, past_lines_begin->line);
+			exit(2);
+		}
+
 		past_lines_end->line = line_buff;
 		past_lines_end->next = malloc(sizeof(past_line_t));
 		past_lines_end->next->line = NULL;
