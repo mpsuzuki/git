@@ -47,7 +47,7 @@ for tarinfo in tar:
             infos.append( tarinfo.gname )
         elif info_tag == "name" or info_tag == "pathname":
             infos.append( tarinfo.name )
-        out_lines.append( "\t".join(infos) )
+    out_lines.append( "\t".join(infos) )
 tar.close()
 
 if uniq:
