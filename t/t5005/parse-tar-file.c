@@ -186,11 +186,12 @@ typedef struct {
 	char prefix[155];       /* 345 */
 } ustar_header_t;
 
-int is_empty_header(const char* h)
+int is_empty_header(const ustar_header_t* h)
 {
 	int i;
+	const char* c = (const char*)h;
 	for (i = 0; i < sizeof(ustar_header_t); i ++) {
-		if (h[i])
+		if (c[i])
 			return 0;
 	}
 	return 1;
@@ -366,16 +367,9 @@ size_t seek_to_next_block(global_params_t* gp, int *failed)
 	return skip_size;
 }
 
-size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
+size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* num_empty, int* failed)
 {
-	ustar_header_t  hdr;
-	size_t          len;
-	char*           buff;
-	size_t          len_content;
-	size_t          hdr_begin = gp->pos;
-
-	int             i;
-
+	size_t  hdr_begin = gp->pos;
 
 	if (feof(gp->fh))
 		return 0;
@@ -388,70 +382,117 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 	}
 	gp->pos += gp->block_size;
 
-	memcpy(&hdr, gp->block_buff, sizeof(hdr));
-	if (is_empty_header((const char*)&hdr)) {
+	memcpy(hdr, gp->block_buff, sizeof(ustar_header_t));
+
+	if (is_empty_header(hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
 		seek_to_next_block(gp, failed);
 		*num_empty = *num_empty + 1;
 		return 0;
 	}
+	return gp->block_size;
+}
 
-	/* non-empty header, reset length of empty headers */
-	*num_empty = 0;
-	len = count_required_buff(&hdr, strlen("\t"), gp, failed);
+/*
+ *   -1: if we cannot calculate the length of line to print
+ * >= 0: length of printed line (0 means nothing printed)
+ */
+int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* failed)
+{
+	size_t  len;
+	char*   buff;
+
+	len = count_required_buff(hdr, strlen("\t"), gp, failed);
 	if (*failed) {
 		fprintf(stderr, "*** cannot calculate required size to print\n");
-		return sizeof(hdr);
+		return -1;
 	}
 
 	if (len == 0) {
 		puts("");
-		return sizeof(hdr);
+		return 0;
 	}
 
 	buff = malloc(len);
-	fill_line_buff(buff, len, &hdr, "\t", gp, failed);
+	fill_line_buff(buff, len, hdr, "\t", gp, failed);
 
 	if (!gp->uniq) {
 		puts(buff);
 		free(buff);
+		return len;
 	} else
 	if (0 <= search_past_lines(buff, gp)) {
 		/* found same line in the past, do not print */
 		free(buff);
+		return 0;
 	}
-	else {
-		/* "--uniq" is given, but no same line in the past */
-		if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
-			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
-			*failed = -2;
-			return sizeof(hdr);
+
+	/* "--uniq" is given, but no same line in the past */
+	if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
+		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
+		*failed = -2;
+		return len;
+	}
+	append_past_line(gp, buff);
+	puts(buff);
+	return len;
+}
+
+
+size_t get_content_len_from_hdr(global_params_t* gp, ustar_header_t* hdr, int *failed)
+{
+	get_printable_token(gp->block_buff, gp->block_size, hdr, USTAR_SIZE, failed);
+	if (*failed)
+		return 0;
+
+	return atol(gp->block_buff);
+}
+
+size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
+{
+	int     l;
+	size_t  hdr_begin, len_content;
+
+	/* assume we used block for ustar header */
+        hdr_begin = gp->pos - gp->block_size;
+
+	len_content = get_content_len_from_hdr(gp, hdr, failed);
+	if (len_content == 0)
+		return sizeof(gp->block_size);
+
+	for (l = 0; l < len_content; l += gp->block_size) {
+		if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh)) {
+			fprintf(stderr, "*** fail in skipping the content\n");
+			*failed = -1;
+			return (gp->pos - hdr_begin);
 		}
-		append_past_line(gp, buff);
-		puts(buff);
+		gp->pos += gp->block_size;
 	}
+
+	/* skip the last half-filled block */
+	seek_to_next_block(gp, failed);
+	if (*failed)
+		fprintf(stderr, "*** fail in seeking to the next block");
+
+	return (gp->pos - hdr_begin);
+}
+
+size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
+{
+	ustar_header_t  hdr;
+	size_t          hdr_begin;
+	int             i;
 	
-	/* skip content */
-	memset(gp->block_buff, 0, gp->block_size);
-	memcpy(gp->block_buff, hdr.size, sizeof(hdr.size));
-	len_content = strtoul(gp->block_buff, NULL, 8);
-	if (len_content > 0) {
-		int l;
-		for (l = 0; l < len_content; l += gp->block_size) {
-			if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh)) {
-				fprintf(stderr, "*** fail in skipping the content\n");
-				*failed = -1;
-				return (gp->pos - hdr_begin);
-			}
-			gp->pos += gp->block_size;
-		}
+	hdr_begin = gp->pos;
+	if (!try_to_get_single_header(gp, &hdr, num_empty, failed) || *failed)
+		return 0;
 
-		/* skip the last half-filled block */
-		seek_to_next_block(gp, failed);
-		if (*failed)
-			fprintf(stderr, "*** fail in seeking to the next block");
-	}
-
+	/* non-empty header, reset length of empty headers */
+	*num_empty = 0;
+	if (0 > try_to_print_single_header(gp, &hdr, failed) || *failed)
+		return sizeof(gp->block_size);
+	
+	skip_content(gp, &hdr, failed);
 	return (gp->pos - hdr_begin);
 }
 
