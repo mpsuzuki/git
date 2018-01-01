@@ -75,8 +75,8 @@ size_t min(size_t a, size_t b)
 void help_exit()
 {
 	puts("parse-tar [<options>] [<pathname>]");
-	puts("parse-tar --show=<uid|gid|uname|owner|gname|group|name>");
-	puts("parse-tar --print=<uid|gid|uname|owner|gname|group|name>");
+	puts("parse-tar --show=<uid|gid|uname|owner|gname|group|name|size>");
+	puts("parse-tar --print=<uid|gid|uname|owner|gname|group|name|size>");
 	puts("parse-tar --uniq");
 	puts("parse-tar --fail-if-multi");
 	exit(0);
