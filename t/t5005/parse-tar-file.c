@@ -334,20 +334,20 @@ void fill_line_buff(char* buff, size_t buff_size, ustar_header_t*  hdr, const ch
 /* functions to collect and search past output  */
 /* -------------------------------------------- */
 
-int no_past_lines(global_params_t* gp)
+int no_past_lines(past_lines_t* pls)
 {
-	if (gp->past_lines.begin->line != NULL)
+	if (pls->begin->line != NULL)
 		return 0; /* has a line, at least */
 	else
 		return 1;
 }
 
 
-int search_past_lines(const char* s, global_params_t* gp)
+int search_past_lines(const char* s, past_lines_t* pls)
 {
 	int i;
 	past_line_t *pl;
-	for (pl = gp->past_lines.begin, i = 0 ; pl->line != NULL; pl = pl->next, i ++) {
+	for (pl = pls->begin, i = 0 ; pl->line != NULL; pl = pl->next, i ++) {
 		if (!strcmp(s, pl->line)) {
 			return i;
 		}	
@@ -355,13 +355,13 @@ int search_past_lines(const char* s, global_params_t* gp)
 	return -1;
 }
 
-void append_past_line(global_params_t* gp, char* buff)
+void append_past_line(past_lines_t* pls, char* buff)
 {
-	gp->past_lines.end->line = buff;
-	gp->past_lines.end->next = malloc(sizeof(past_line_t));
-	gp->past_lines.end->next->line = NULL;
-	gp->past_lines.end->next->next = NULL;
-	gp->past_lines.end = gp->past_lines.end->next;
+	pls->end->line = buff;
+	pls->end->next = malloc(sizeof(past_line_t));
+	pls->end->next->line = NULL;
+	pls->end->next->next = NULL;
+	pls->end = pls->end->next;
 }
 
 /* -------------------------------- */
@@ -412,18 +412,18 @@ size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* n
 
 int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
 {
-	if (0 <= search_past_lines(buff, gp)) {
+	if (0 <= search_past_lines(buff, &(gp->past_lines))) {
 		/* found same line in the past, do not print */
 		free(buff);
 		return 0;
 	}
 
 	/* "--uniq" is given, but no same line in the past */
-	if (gp->fail_if_multi && !no_past_lines(gp)) {
+	if (gp->fail_if_multi && !no_past_lines(&(gp->past_lines))) {
 		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines.begin->line);
 		*failed = -2;
 	} else {
-		append_past_line(gp, buff);
+		append_past_line(&(gp->past_lines), buff);
 		puts(buff);
 	}
 	return strlen(buff);
@@ -461,13 +461,13 @@ int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* fa
 }
 
 
-size_t get_content_len_from_hdr(global_params_t* gp, ustar_header_t* hdr, int *failed)
+size_t get_content_len_from_hdr(block_t* blk, ustar_header_t* hdr, int *failed)
 {
-	get_printable_token(gp->block.buff, gp->block.size, hdr, USTAR_SIZE, failed);
+	get_printable_token(blk->buff, blk->size, hdr, USTAR_SIZE, failed);
 	if (*failed)
 		return 0;
 
-	return atol(gp->block.buff);
+	return atol(blk->buff);
 }
 
 size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
@@ -478,7 +478,7 @@ size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
 	/* assume we used block for ustar header */
         hdr_begin = gp->handle.pos - gp->block.size;
 
-	len_content = get_content_len_from_hdr(gp, hdr, failed);
+	len_content = get_content_len_from_hdr(&(gp->block), hdr, failed);
 	if (len_content == 0)
 		return sizeof(gp->block.size);
 
