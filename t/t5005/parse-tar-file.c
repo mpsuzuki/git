@@ -113,9 +113,9 @@ header_info_t get_info_enum_from_str(const char* s)
 	return USTAR_NONE;
 }
 
-/* -------------------*/
-/* functions to setup */
-/* -------------------*/
+/* ------------------- */
+/* functions to setup  */
+/* ------------------- */
 
 static int parse_args(int argc, const char **argv, global_params_t* gp)
 {
@@ -162,9 +162,9 @@ static int parse_args(int argc, const char **argv, global_params_t* gp)
 	return gp->num_infos;
 }
 
-/* ---------------------------------------*/
-/* functions to process the loaded header */
-/* ---------------------------------------*/
+/* --------------------------------------- */
+/* functions to process the loaded header  */
+/* --------------------------------------- */
 
 char block_buff[USTAR_BLOCKSIZE];
 typedef struct {
@@ -301,25 +301,9 @@ void fill_line_buff(char* buff, size_t buff_size, ustar_header_t*  hdr, const ch
 	}
 }
 
-/* --------------------------------*/
-/* functions to process the stream */
-/* --------------------------------*/
-
-size_t seek_to_next_block(global_params_t* gp, int *failed)
-{
-	size_t overflow = (gp->pos % gp->block_size);
-	size_t skip_size;
-
-	if (overflow == 0)
-		return 0;
-	skip_size = gp->block_size - overflow;
-	if (1 != fread(gp->block_buff, skip_size, 1, gp->fh)) {
-		*failed = -1;
-		return -1;
-	}
-	gp->pos += skip_size;
-	return skip_size;
-}
+/* -------------------------------------------- */
+/* functions to collect and search past output  */
+/* -------------------------------------------- */
 
 int search_past_lines(const char* s, global_params_t* gp)
 {
@@ -340,6 +324,26 @@ void append_past_line(global_params_t* gp, char* buff)
 	gp->past_lines_end->next->line = NULL;
 	gp->past_lines_end->next->next = NULL;
 	gp->past_lines_end = gp->past_lines_end->next;
+}
+
+/* -------------------------------- */
+/* functions to process the stream  */
+/* -------------------------------- */
+
+size_t seek_to_next_block(global_params_t* gp, int *failed)
+{
+	size_t overflow = (gp->pos % gp->block_size);
+	size_t skip_size;
+
+	if (overflow == 0)
+		return 0;
+	skip_size = gp->block_size - overflow;
+	if (1 != fread(gp->block_buff, skip_size, 1, gp->fh)) {
+		*failed = -1;
+		return -1;
+	}
+	gp->pos += skip_size;
+	return skip_size;
 }
 
 size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
@@ -430,6 +434,10 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 
 	return (gp->pos - hdr_begin);
 }
+
+/* ----- */
+/* main  */
+/* ----- */
 
 int main(int argc, const char **argv)
 {
