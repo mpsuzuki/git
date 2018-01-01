@@ -250,7 +250,7 @@ size_t get_dec_str_from_oct_str(char* buff, size_t buff_size, const char* oct_bu
 }
 
 
-int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, header_info_t inf, int* failed)
+size_t get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, header_info_t inf, int* failed)
 {
 	const char*    raw;
 
@@ -283,7 +283,6 @@ int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, heade
 	default:
 		return 0;
 	}
-
 }
 
 
