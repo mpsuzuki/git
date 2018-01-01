@@ -212,12 +212,11 @@ const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, header_info_t inf, int* failed)
 {
 	const char*   raw;
-	char*   end_of_oct;
-	unsigned long dec;          /* scratch buff for oct->dec */
-	char          dec_buff[21]; /* scratch buff for dec->str. strlen(printf("%d", UINT64_MAX)) */
+	char*         end_of_oct;
+	char          oct_buff[200]; /* sufficient to cover the longest data in the header */
+	unsigned long dec;           /* scratch buff for oct->dec */
+	char          dec_buff[22];  /* scratch buff for dec->str: strlen(printf("%d", UINT64_MAX)) */
 
-	memset(buff, 0, buff_size);
-	memset(dec_buff, 0, sizeof(dec_buff));
 	raw = get_hdr_data_by_id(hdr, inf);
 
 	switch (inf) {
@@ -227,17 +226,20 @@ int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, heade
 		return strlen(buff);
 	case USTAR_UNAME:
 	case USTAR_GNAME:
+		memset(buff, 0, buff_size);
 		strncpy(buff, raw, min(buff_size, sizeof(hdr->uname)));
 		return strlen(buff);
 
 	/* octal data should be converted decimal */
 	case USTAR_UID:
 	case USTAR_GID:
-		strncpy(buff, raw, min(buff_size, sizeof(hdr->uid)));
+		memset(oct_buff, 0, sizeof(oct_buff));
+		strncpy(oct_buff, raw, min(sizeof(oct_buff), sizeof(hdr->uid)));
 		break;
 
 	case USTAR_SIZE:
-		strncpy(buff, raw, min(buff_size, sizeof(hdr->size)));
+		memset(oct_buff, 0, sizeof(oct_buff));
+		strncpy(oct_buff, raw, min(sizeof(oct_buff), sizeof(hdr->size)));
 		break;
 
 	default:
@@ -245,9 +247,9 @@ int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, heade
 	}
 
 	/* handle octal numerics */
-	dec = strtoul(buff, &end_of_oct, 8);
-	if (end_of_oct == buff) {
-		fprintf(stderr, "*** cannot parse UID/GID/SIZE from \"%s\"\n", buff);
+	dec = strtoul(oct_buff, &end_of_oct, 8);
+	if (end_of_oct - oct_buff != strlen(oct_buff)) {
+		fprintf(stderr, "*** cannot parse UID/GID/SIZE from \"%s\"\n", raw);
 		*failed = -1;
 		return 0;
 	}
@@ -258,6 +260,7 @@ int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, heade
 		fprintf(stderr, "*** too large number %d to write to the buffer[%d]\n", dec, buff_size);
 		*failed = -1;
 	}
+	memset(buff, 0, buff_size);
 	strncpy(buff, dec_buff, min(buff_size, strlen(dec_buff) + 1));
 	return strlen(buff);
 }
@@ -279,18 +282,22 @@ size_t count_required_buff(ustar_header_t* hdr, size_t len_sep, global_params_t*
 
 void fill_line_buff(char* buff, size_t buff_size, ustar_header_t*  hdr, const char* sep, global_params_t* gp, int *failed)
 {
+	size_t len_sep;
 	char* cur;
 	char* end;
 	int i;
 
+	len_sep = strlen(sep);
 	memset(buff, 0, buff_size);
 	cur = buff;
 	end = buff + buff_size;
 	for (i = 0; i < gp->num_infos; i++) {
 		cur += get_printable_token(cur, (end - cur), hdr, gp->infos[i], failed);
 
-		if (i < gp->num_infos - 1)
+		if (i < gp->num_infos - 1) {
 			strncpy(cur, sep, (end - cur));
+			cur += len_sep;
+		}
 	}
 }
 
