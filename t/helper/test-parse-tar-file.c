@@ -59,9 +59,9 @@ static void init_global_params(global_params_t *gp)
 	gp->handle.file = NULL;
 	gp->handle.pos = 0;
 	gp->handle.block.size = USTAR_BLOCKSIZE;
-	gp->handle.block.buff = malloc(USTAR_BLOCKSIZE);
+	gp->handle.block.buff = xmalloc(USTAR_BLOCKSIZE);
 
-	gp->past_lines.begin = malloc(sizeof(past_line_t));
+	gp->past_lines.begin = xmalloc(sizeof(past_line_t));
 	gp->past_lines.begin->line = NULL;
 	gp->past_lines.begin->next = NULL;
 	gp->past_lines.end = gp->past_lines.begin;
@@ -130,7 +130,7 @@ static int parse_args(int argc, const char **argv, global_params_t* gp)
 	init_global_params(gp);
 
 	/* allocate info_to_print[argc] could be overkill, but sufficient */
-	gp->infos = (header_info_t *)malloc(argc * sizeof(header_info_t));
+	gp->infos = (header_info_t *)xmalloc(argc * sizeof(header_info_t));
 	memset(gp->infos, 0, argc * sizeof(header_info_t));
 
 	for (i = 1; i < argc; i ++) {
@@ -243,9 +243,9 @@ size_t get_dec_str_from_oct_str(char* buff, size_t buff_size, const char* oct_bu
 	}
 
 	/* make decimal expression */
-	snprintf(dec_buff, sizeof(dec_buff), "%d", dec);
+	snprintf(dec_buff, sizeof(dec_buff), "%ld", dec);
 	if (buff_size < strlen(dec_buff) + 1) {
-		fprintf(stderr, "*** too large number %d to write to the buffer[%d]\n", dec, buff_size);
+		fprintf(stderr, "*** too large number %ld to write to the buffer[%ld]\n", dec, buff_size);
 		*failed = -1;
 		return 0;
 	}
@@ -355,7 +355,7 @@ int search_past_lines(past_lines_t* pls, const char* s)
 void append_past_line(past_lines_t* pls, char* buff)
 {
 	pls->end->line = buff;
-	pls->end->next = malloc(sizeof(past_line_t));
+	pls->end->next = xmalloc(sizeof(past_line_t));
 	pls->end->next->line = NULL;
 	pls->end->next->next = NULL;
 	pls->end = pls->end->next;
@@ -390,7 +390,7 @@ size_t try_to_get_single_header(file_handle_t* fh, ustar_header_t* hdr, int* num
 	else
 	if (1 != fread(fh->block.buff, fh->block.size, 1, fh->file))
 	{
-		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
+		fprintf(stderr, "*** not EOF but cannot load a header from 0x%08lx\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
@@ -399,7 +399,7 @@ size_t try_to_get_single_header(file_handle_t* fh, ustar_header_t* hdr, int* num
 	memcpy(hdr, fh->block.buff, sizeof(ustar_header_t));
 
 	if (is_empty_header(hdr)) {
-		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
+		fprintf(stderr, "*** empty header found at 0x%08lx, skip to next block\n", hdr_begin);
 		seek_to_next_block(fh, failed);
 		*num_empty = *num_empty + 1;
 		return 0;
@@ -446,7 +446,7 @@ int try_to_print_single_header(ustar_header_t* hdr, global_params_t* gp, int* fa
 		return 0;
 	}
 
-	buff = malloc(len);
+	buff = xmalloc(len);
 	fill_line_buff(buff, len, hdr, "\t", gp, failed);
 
 	if (gp->uniq)
@@ -500,7 +500,6 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 {
 	ustar_header_t  hdr;
 	size_t          hdr_begin;
-	int             i;
 	
 	hdr_begin = gp->handle.pos;
 	if (!try_to_get_single_header(&(gp->handle), &hdr, num_empty, failed) || *failed)
@@ -519,7 +518,7 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 /* main  */
 /* ----- */
 
-int main(int argc, const char **argv)
+int cmd_main(int argc, const char **argv)
 {
 	int chunk_length;
 	int failed = 0;
