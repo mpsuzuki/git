@@ -200,69 +200,90 @@ const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 {
 	switch (id) {
 	case USTAR_PATHNAME: return hdr->name;
-	case USTAR_UID: return hdr->uid;
-	case USTAR_GID: return hdr->gid;
-	case USTAR_UNAME: return hdr->uname;
-	case USTAR_GNAME: return hdr->gname;
-	case USTAR_SIZE: return hdr->size;
+	case USTAR_UID:      return hdr->uid;
+	case USTAR_GID:      return hdr->gid;
+	case USTAR_UNAME:    return hdr->uname;
+	case USTAR_GNAME:    return hdr->gname;
+	case USTAR_SIZE:     return hdr->size;
 	default: return NULL;
 	}
 }
 
+size_t get_hdr_data_size_by_id(header_info_t id)
+{
+	switch (id) {
+	case USTAR_PATHNAME: return sizeof(((ustar_header_t *)NULL)->name);
+	case USTAR_UID:      return sizeof(((ustar_header_t *)NULL)->uid);
+	case USTAR_GID:      return sizeof(((ustar_header_t *)NULL)->gid);
+	case USTAR_UNAME:    return sizeof(((ustar_header_t *)NULL)->uname);
+	case USTAR_GNAME:    return sizeof(((ustar_header_t *)NULL)->gname);
+	case USTAR_SIZE:     return sizeof(((ustar_header_t *)NULL)->size);
+	default: return 0;
+	}
+}
+
+size_t get_dec_str_from_oct_str(char* buff, size_t buff_size, const char* oct_buff, int* failed)
+{
+	char*          end_of_oct;
+	unsigned long  dec;           /* scratch buff for oct->dec */
+	char           dec_buff[22];  /* scratch buff for dec->str: strlen(printf("%d", UINT64_MAX)) */
+
+	/* parse octal value */
+	dec = strtoul(oct_buff, &end_of_oct, 8);
+	if (end_of_oct - oct_buff != strlen(oct_buff)) {
+		fprintf(stderr, "*** cannot parse \"%s\" as octal numerical\n", oct_buff);
+		*failed = -1;
+		return 0;
+	}
+
+	/* make decimal expression */
+	snprintf(dec_buff, sizeof(dec_buff), "%d", dec);
+	if (buff_size < strlen(dec_buff) + 1) {
+		fprintf(stderr, "*** too large number %d to write to the buffer[%d]\n", dec, buff_size);
+		*failed = -1;
+		return 0;
+	}
+
+	memset(buff, 0, buff_size);
+	strncpy(buff, dec_buff, buff_size);
+	return strlen(buff);
+}
+
+
 int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, header_info_t inf, int* failed)
 {
-	const char*   raw;
-	char*         end_of_oct;
-	char          oct_buff[200]; /* sufficient to cover the longest data in the header */
-	unsigned long dec;           /* scratch buff for oct->dec */
-	char          dec_buff[22];  /* scratch buff for dec->str: strlen(printf("%d", UINT64_MAX)) */
+	const char*    raw;
+
+	char           oct_buff[200]; /* sufficient to cover the longest data in the header */
 
 	raw = get_hdr_data_by_id(hdr, inf);
 
 	switch (inf) {
+
 	/* raw data should be printed */
 	case USTAR_PATHNAME:
-		strncpy(buff, raw, min(buff_size, sizeof(hdr->name)));
-		return strlen(buff);
 	case USTAR_UNAME:
 	case USTAR_GNAME:
+        	/*
+		 * good tar file should null-terminated strings in the headers,
+		 * but we prepare the case of non-terminated string cases.
+		 */
 		memset(buff, 0, buff_size);
-		strncpy(buff, raw, min(buff_size, sizeof(hdr->uname)));
+		memcpy(buff, raw, min(buff_size - 1, get_hdr_data_size_by_id(inf)));
 		return strlen(buff);
 
 	/* octal data should be converted decimal */
 	case USTAR_UID:
 	case USTAR_GID:
-		memset(oct_buff, 0, sizeof(oct_buff));
-		strncpy(oct_buff, raw, min(sizeof(oct_buff), sizeof(hdr->uid)));
-		break;
-
 	case USTAR_SIZE:
 		memset(oct_buff, 0, sizeof(oct_buff));
-		strncpy(oct_buff, raw, min(sizeof(oct_buff), sizeof(hdr->size)));
-		break;
+		memcpy(oct_buff, raw, min(sizeof(oct_buff) - 1, get_hdr_data_size_by_id(inf)));
+		return get_dec_str_from_oct_str(buff, buff_size, oct_buff, failed);
 
 	default:
 		return 0;
 	}
 
-	/* handle octal numerics */
-	dec = strtoul(oct_buff, &end_of_oct, 8);
-	if (end_of_oct - oct_buff != strlen(oct_buff)) {
-		fprintf(stderr, "*** cannot parse UID/GID/SIZE from \"%s\"\n", raw);
-		*failed = -1;
-		return 0;
-	}
-
-	/* parse octal value */
-	snprintf(dec_buff, sizeof(dec_buff), "%d", dec);
-	if (buff_size < strlen(dec_buff) + 1) {
-		fprintf(stderr, "*** too large number %d to write to the buffer[%d]\n", dec, buff_size);
-		*failed = -1;
-	}
-	memset(buff, 0, buff_size);
-	strncpy(buff, dec_buff, min(buff_size, strlen(dec_buff) + 1));
-	return strlen(buff);
 }
 
 
