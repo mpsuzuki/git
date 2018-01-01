@@ -407,15 +407,6 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 		puts(buff);
 	}
 	
-#if 0 /* now all chunck is block-sized, no need to skip trailer */
-	/* some padding between tar header and content */
-	seek_to_next_block(gp, failed);
-	if (*failed) {
-		fprintf(stderr, "*** fail in seeking to the content");
-		return (gp->pos - hdr_begin);
-	}
-#endif
-
 	/* skip content */
 	memset(gp->block_buff, 0, gp->block_size);
 	memcpy(gp->block_buff, hdr.size, sizeof(hdr.size));
@@ -430,12 +421,13 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 			}
 			gp->pos += gp->block_size;
 		}
+
+		/* skip the last half-filled block */
+		seek_to_next_block(gp, failed);
+		if (*failed)
+			fprintf(stderr, "*** fail in seeking to the next block");
 	}
 
-	/* some padding after content */
-	seek_to_next_block(gp, failed);
-	if (*failed)
-		fprintf(stderr, "*** fail in seeking to the next block");
 	return (gp->pos - hdr_begin);
 }
 
