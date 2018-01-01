@@ -367,46 +367,46 @@ void append_past_line(past_lines_t* pls, char* buff)
 /* functions to process the stream  */
 /* -------------------------------- */
 
-size_t seek_to_next_block(global_params_t* gp, int *failed)
+size_t seek_to_next_block(file_handle_t* fh, int *failed)
 {
-	size_t overflow = (gp->handle.pos % gp->handle.block.size);
+	size_t overflow = (fh->pos % fh->block.size);
 	size_t skip_size;
 
 	if (overflow == 0)
 		return 0;
-	skip_size = gp->handle.block.size - overflow;
-	if (1 != fread(gp->handle.block.buff, skip_size, 1, gp->handle.file)) {
+	skip_size = fh->block.size - overflow;
+	if (1 != fread(fh->block.buff, skip_size, 1, fh->file)) {
 		*failed = -1;
 		return -1;
 	}
-	gp->handle.pos += skip_size;
+	fh->pos += skip_size;
 	return skip_size;
 }
 
-size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* num_empty, int* failed)
+size_t try_to_get_single_header(file_handle_t* fh, ustar_header_t* hdr, int* num_empty, int* failed)
 {
-	size_t  hdr_begin = gp->handle.pos;
+	size_t  hdr_begin = fh->pos;
 
-	if (feof(gp->handle.file))
+	if (feof(fh->file))
 		return 0;
 	else
-	if (1 != fread(gp->handle.block.buff, gp->handle.block.size, 1, gp->handle.file))
+	if (1 != fread(fh->block.buff, fh->block.size, 1, fh->file))
 	{
 		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
-	gp->handle.pos += gp->handle.block.size;
+	fh->pos += fh->block.size;
 
-	memcpy(hdr, gp->handle.block.buff, sizeof(ustar_header_t));
+	memcpy(hdr, fh->block.buff, sizeof(ustar_header_t));
 
 	if (is_empty_header(hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
-		seek_to_next_block(gp, failed);
+		seek_to_next_block(fh, failed);
 		*num_empty = *num_empty + 1;
 		return 0;
 	}
-	return gp->handle.block.size;
+	return fh->block.size;
 }
 
 int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
@@ -469,33 +469,33 @@ size_t get_content_len_from_hdr(block_t* blk, ustar_header_t* hdr, int *failed)
 	return atol(blk->buff);
 }
 
-size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
+size_t skip_content(file_handle_t* fh, ustar_header_t* hdr, int *failed)
 {
 	int     l;
 	size_t  hdr_begin, len_content;
 
 	/* assume we used block for ustar header */
-        hdr_begin = gp->handle.pos - gp->handle.block.size;
+        hdr_begin = fh->pos - fh->block.size;
 
-	len_content = get_content_len_from_hdr(&(gp->handle.block), hdr, failed);
+	len_content = get_content_len_from_hdr(&(fh->block), hdr, failed);
 	if (len_content == 0)
-		return sizeof(gp->handle.block.size);
+		return sizeof(fh->block.size);
 
-	for (l = 0; l < len_content; l += gp->handle.block.size) {
-		if (1 != fread(gp->handle.block.buff, gp->handle.block.size, 1, gp->handle.file)) {
+	for (l = 0; l < len_content; l += fh->block.size) {
+		if (1 != fread(fh->block.buff, fh->block.size, 1, fh->file)) {
 			fprintf(stderr, "*** fail in skipping the content\n");
 			*failed = -1;
-			return (gp->handle.pos - hdr_begin);
+			return (fh->pos - hdr_begin);
 		}
-		gp->handle.pos += gp->handle.block.size;
+		fh->pos += fh->block.size;
 	}
 
 	/* skip the last half-filled block */
-	seek_to_next_block(gp, failed);
+	seek_to_next_block(fh, failed);
 	if (*failed)
 		fprintf(stderr, "*** fail in seeking to the next block");
 
-	return (gp->handle.pos - hdr_begin);
+	return (fh->pos - hdr_begin);
 }
 
 size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
@@ -505,7 +505,7 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 	int             i;
 	
 	hdr_begin = gp->handle.pos;
-	if (!try_to_get_single_header(gp, &hdr, num_empty, failed) || *failed)
+	if (!try_to_get_single_header(&(gp->handle), &hdr, num_empty, failed) || *failed)
 		return 0;
 
 	/* non-empty header, reset length of empty headers */
@@ -513,7 +513,7 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 	if (0 > try_to_print_single_header(gp, &hdr, failed) || *failed)
 		return sizeof(gp->handle.block.size);
 	
-	skip_content(gp, &hdr, failed);
+	skip_content(&(gp->handle), &hdr, failed);
 	return (gp->handle.pos - hdr_begin);
 }
 
