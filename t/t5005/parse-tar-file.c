@@ -13,12 +13,28 @@ typedef enum {
 	USTAR_MAX
 } header_info_t;
 
+typedef struct {
+	size_t	size;
+	char*	buff;
+} block_t;
+
+typedef struct {
+	FILE*	file;
+	size_t	pos;
+} file_handle_t;
+
 typedef struct past_line_t {
 	const char*  line;
 	struct past_line_t* next;
 } past_line_t;
 
 typedef struct {
+	past_line_t*	begin;
+	past_line_t*	end;
+} past_lines_t;
+
+typedef struct {
+	/* params from arguments */
 	header_info_t*  infos;
 	size_t          num_infos;
 
@@ -27,17 +43,10 @@ typedef struct {
 
 	const char*  	pathname_tarfile;
 
-	size_t		block_size;
-	char*		block_buff;
-
-	FILE*		fh;
-	size_t		pos;
-
-	/* linked list to cache past lines */
-	past_line_t	past_lines;
-	past_line_t*	past_lines_begin;
-	past_line_t*	past_lines_end;
-
+	/* internal things */
+	block_t		block;
+	file_handle_t	handle;
+	past_lines_t	past_lines;
 } global_params_t;
 
 #define USTAR_BLOCKSIZE 512
@@ -49,16 +58,16 @@ static void init_global_params(global_params_t *gp)
 	gp->fail_if_multi = 0;
 	gp->pathname_tarfile = NULL;
 
-	gp->block_size = USTAR_BLOCKSIZE;
-	gp->block_buff = malloc(USTAR_BLOCKSIZE);
+	gp->block.size = USTAR_BLOCKSIZE;
+	gp->block.buff = malloc(USTAR_BLOCKSIZE);
 
-	gp->fh = NULL;
-	gp->pos = 0;
+	gp->handle.file = NULL;
+	gp->handle.pos = 0;
 
-	gp->past_lines.line = NULL;
-	gp->past_lines.next = NULL;
-	gp->past_lines_begin = &(gp->past_lines);
-	gp->past_lines_end = &(gp->past_lines);
+	gp->past_lines.begin = malloc(sizeof(past_line_t));
+	gp->past_lines.begin->line = NULL;
+	gp->past_lines.begin->next = NULL;
+	gp->past_lines.end = gp->past_lines.begin;
 }
 
 size_t max(size_t a, size_t b)
@@ -166,7 +175,6 @@ static int parse_args(int argc, const char **argv, global_params_t* gp)
 /* functions to process the loaded header  */
 /* --------------------------------------- */
 
-char block_buff[USTAR_BLOCKSIZE];
 typedef struct {
 	char name[100];         /*   0 */
 	char mode[8];           /* 100 */
@@ -326,11 +334,20 @@ void fill_line_buff(char* buff, size_t buff_size, ustar_header_t*  hdr, const ch
 /* functions to collect and search past output  */
 /* -------------------------------------------- */
 
+int no_past_lines(global_params_t* gp)
+{
+	if (gp->past_lines.begin->line != NULL)
+		return 0; /* has a line, at least */
+	else
+		return 1;
+}
+
+
 int search_past_lines(const char* s, global_params_t* gp)
 {
 	int i;
 	past_line_t *pl;
-	for (pl = gp->past_lines_begin, i = 0 ; pl->line != NULL; pl = pl->next, i ++) {
+	for (pl = gp->past_lines.begin, i = 0 ; pl->line != NULL; pl = pl->next, i ++) {
 		if (!strcmp(s, pl->line)) {
 			return i;
 		}	
@@ -340,11 +357,11 @@ int search_past_lines(const char* s, global_params_t* gp)
 
 void append_past_line(global_params_t* gp, char* buff)
 {
-	gp->past_lines_end->line = buff;
-	gp->past_lines_end->next = malloc(sizeof(past_line_t));
-	gp->past_lines_end->next->line = NULL;
-	gp->past_lines_end->next->next = NULL;
-	gp->past_lines_end = gp->past_lines_end->next;
+	gp->past_lines.end->line = buff;
+	gp->past_lines.end->next = malloc(sizeof(past_line_t));
+	gp->past_lines.end->next->line = NULL;
+	gp->past_lines.end->next->next = NULL;
+	gp->past_lines.end = gp->past_lines.end->next;
 }
 
 /* -------------------------------- */
@@ -353,36 +370,36 @@ void append_past_line(global_params_t* gp, char* buff)
 
 size_t seek_to_next_block(global_params_t* gp, int *failed)
 {
-	size_t overflow = (gp->pos % gp->block_size);
+	size_t overflow = (gp->handle.pos % gp->block.size);
 	size_t skip_size;
 
 	if (overflow == 0)
 		return 0;
-	skip_size = gp->block_size - overflow;
-	if (1 != fread(gp->block_buff, skip_size, 1, gp->fh)) {
+	skip_size = gp->block.size - overflow;
+	if (1 != fread(gp->block.buff, skip_size, 1, gp->handle.file)) {
 		*failed = -1;
 		return -1;
 	}
-	gp->pos += skip_size;
+	gp->handle.pos += skip_size;
 	return skip_size;
 }
 
 size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* num_empty, int* failed)
 {
-	size_t  hdr_begin = gp->pos;
+	size_t  hdr_begin = gp->handle.pos;
 
-	if (feof(gp->fh))
+	if (feof(gp->handle.file))
 		return 0;
 	else
-	if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh))
+	if (1 != fread(gp->block.buff, gp->block.size, 1, gp->handle.file))
 	{
 		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
-	gp->pos += gp->block_size;
+	gp->handle.pos += gp->block.size;
 
-	memcpy(hdr, gp->block_buff, sizeof(ustar_header_t));
+	memcpy(hdr, gp->block.buff, sizeof(ustar_header_t));
 
 	if (is_empty_header(hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
@@ -390,7 +407,7 @@ size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* n
 		*num_empty = *num_empty + 1;
 		return 0;
 	}
-	return gp->block_size;
+	return gp->block.size;
 }
 
 int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
@@ -402,8 +419,8 @@ int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
 	}
 
 	/* "--uniq" is given, but no same line in the past */
-	if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
-		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
+	if (gp->fail_if_multi && !no_past_lines(gp)) {
+		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines.begin->line);
 		*failed = -2;
 	} else {
 		append_past_line(gp, buff);
@@ -446,11 +463,11 @@ int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* fa
 
 size_t get_content_len_from_hdr(global_params_t* gp, ustar_header_t* hdr, int *failed)
 {
-	get_printable_token(gp->block_buff, gp->block_size, hdr, USTAR_SIZE, failed);
+	get_printable_token(gp->block.buff, gp->block.size, hdr, USTAR_SIZE, failed);
 	if (*failed)
 		return 0;
 
-	return atol(gp->block_buff);
+	return atol(gp->block.buff);
 }
 
 size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
@@ -459,19 +476,19 @@ size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
 	size_t  hdr_begin, len_content;
 
 	/* assume we used block for ustar header */
-        hdr_begin = gp->pos - gp->block_size;
+        hdr_begin = gp->handle.pos - gp->block.size;
 
 	len_content = get_content_len_from_hdr(gp, hdr, failed);
 	if (len_content == 0)
-		return sizeof(gp->block_size);
+		return sizeof(gp->block.size);
 
-	for (l = 0; l < len_content; l += gp->block_size) {
-		if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh)) {
+	for (l = 0; l < len_content; l += gp->block.size) {
+		if (1 != fread(gp->block.buff, gp->block.size, 1, gp->handle.file)) {
 			fprintf(stderr, "*** fail in skipping the content\n");
 			*failed = -1;
-			return (gp->pos - hdr_begin);
+			return (gp->handle.pos - hdr_begin);
 		}
-		gp->pos += gp->block_size;
+		gp->handle.pos += gp->block.size;
 	}
 
 	/* skip the last half-filled block */
@@ -479,7 +496,7 @@ size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
 	if (*failed)
 		fprintf(stderr, "*** fail in seeking to the next block");
 
-	return (gp->pos - hdr_begin);
+	return (gp->handle.pos - hdr_begin);
 }
 
 size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
@@ -488,17 +505,17 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 	size_t          hdr_begin;
 	int             i;
 	
-	hdr_begin = gp->pos;
+	hdr_begin = gp->handle.pos;
 	if (!try_to_get_single_header(gp, &hdr, num_empty, failed) || *failed)
 		return 0;
 
 	/* non-empty header, reset length of empty headers */
 	*num_empty = 0;
 	if (0 > try_to_print_single_header(gp, &hdr, failed) || *failed)
-		return sizeof(gp->block_size);
+		return sizeof(gp->block.size);
 	
 	skip_content(gp, &hdr, failed);
-	return (gp->pos - hdr_begin);
+	return (gp->handle.pos - hdr_begin);
 }
 
 /* ----- */
@@ -519,11 +536,11 @@ int main(int argc, const char **argv)
 		exit(-1);
 
 	if (!gp.pathname_tarfile)
-		gp.fh = stdin;
+		gp.handle.file = stdin;
 	else
-		gp.fh = fopen(gp.pathname_tarfile, "r");
+		gp.handle.file = fopen(gp.pathname_tarfile, "r");
 
-	if (!gp.fh) {
+	if (!gp.handle.file) {
 		if (gp.pathname_tarfile)
 			fprintf(stderr, "*** cannot open %s\n", gp.pathname_tarfile);
 		exit(-1);
@@ -537,7 +554,7 @@ int main(int argc, const char **argv)
 		}
 	} while (!failed);
 
-	fclose(gp.fh);
+	fclose(gp.handle.file);
 	if (failed) {
 		fprintf(stderr, "*** parse failed\n");
 		exit(-2);
