@@ -342,7 +342,7 @@ int no_past_lines(past_lines_t* pls)
 }
 
 
-int search_past_lines(const char* s, past_lines_t* pls)
+int search_past_lines(past_lines_t* pls, const char* s)
 {
 	int i;
 	past_line_t *pl;
@@ -409,9 +409,9 @@ size_t try_to_get_single_header(file_handle_t* fh, ustar_header_t* hdr, int* num
 	return fh->block.size;
 }
 
-int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
+int print_single_header_if_uniq(char* buff, global_params_t* gp, int *failed)
 {
-	if (0 <= search_past_lines(buff, &(gp->past_lines))) {
+	if (0 <= search_past_lines(&(gp->past_lines), buff)) {
 		/* found same line in the past, do not print */
 		free(buff);
 		return 0;
@@ -432,7 +432,7 @@ int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
  *   -1: if we cannot calculate the length of line to print
  * >= 0: length of printed line (0 means nothing printed)
  */
-int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* failed)
+int try_to_print_single_header(ustar_header_t* hdr, global_params_t* gp, int* failed)
 {
 	size_t  len;
 	char*   buff;
@@ -452,7 +452,7 @@ int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* fa
 	fill_line_buff(buff, len, hdr, "\t", gp, failed);
 
 	if (gp->uniq)
-		return print_single_header_if_uniq(gp, buff, failed);
+		return print_single_header_if_uniq(buff, gp, failed);
 
 	puts(buff);
 	free(buff);
@@ -510,7 +510,7 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 
 	/* non-empty header, reset length of empty headers */
 	*num_empty = 0;
-	if (0 > try_to_print_single_header(gp, &hdr, failed) || *failed)
+	if (0 > try_to_print_single_header(&hdr, gp, failed) || *failed)
 		return sizeof(gp->handle.block.size);
 	
 	skip_content(&(gp->handle), &hdr, failed);
