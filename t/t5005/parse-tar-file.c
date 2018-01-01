@@ -1,6 +1,4 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include "git-compat-util.h"
 
 typedef enum {
 	USTAR_NONE = 0,
