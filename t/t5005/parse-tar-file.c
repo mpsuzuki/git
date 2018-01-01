@@ -393,6 +393,25 @@ size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* n
 	return gp->block_size;
 }
 
+int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
+{
+	if (0 <= search_past_lines(buff, gp)) {
+		/* found same line in the past, do not print */
+		free(buff);
+		return 0;
+	}
+
+	/* "--uniq" is given, but no same line in the past */
+	if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
+		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
+		*failed = -2;
+	} else {
+		append_past_line(gp, buff);
+		puts(buff);
+	}
+	return strlen(buff);
+}
+
 /*
  *   -1: if we cannot calculate the length of line to print
  * >= 0: length of printed line (0 means nothing printed)
@@ -416,25 +435,11 @@ int try_to_print_single_header(global_params_t* gp, ustar_header_t* hdr, int* fa
 	buff = malloc(len);
 	fill_line_buff(buff, len, hdr, "\t", gp, failed);
 
-	if (!gp->uniq) {
-		puts(buff);
-		free(buff);
-		return len;
-	} else
-	if (0 <= search_past_lines(buff, gp)) {
-		/* found same line in the past, do not print */
-		free(buff);
-		return 0;
-	}
+	if (gp->uniq)
+		return print_single_header_if_uniq(gp, buff, failed);
 
-	/* "--uniq" is given, but no same line in the past */
-	if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
-		fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
-		*failed = -2;
-		return len;
-	}
-	append_past_line(gp, buff);
 	puts(buff);
+	free(buff);
 	return len;
 }
 
