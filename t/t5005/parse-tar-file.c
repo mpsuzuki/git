@@ -2,6 +2,76 @@
 #include <string.h>
 #include <stdlib.h>
 
+typedef enum {
+	USTAR_NONE = 0,
+	USTAR_PATHNAME,
+	USTAR_UNAME,
+	USTAR_GNAME,
+	USTAR_UID,
+	USTAR_GID,
+	USTAR_SIZE,
+	USTAR_MAX
+} header_info_t;
+
+typedef struct past_line_t {
+	const char*  line;
+	struct past_line_t* next;
+} past_line_t;
+
+typedef struct {
+	header_info_t*  infos;
+	size_t          num_infos;
+
+	int  		uniq;
+	int  		fail_if_multi;
+
+	const char*  	pathname_tarfile;
+
+	size_t		block_size;
+	char*		block_buff;
+
+	FILE*		fh;
+	size_t		pos;
+
+	/* linked list to cache past lines */
+	past_line_t	past_lines;
+	past_line_t*	past_lines_begin;
+	past_line_t*	past_lines_end;
+
+} global_params_t;
+
+#define USTAR_BLOCKSIZE 512
+
+static void init_global_params(global_params_t *gp)
+{
+	gp->num_infos = 0;
+	gp->uniq = 0;
+	gp->fail_if_multi = 0;
+	gp->pathname_tarfile = NULL;
+
+	gp->block_size = USTAR_BLOCKSIZE;
+	gp->block_buff = malloc(USTAR_BLOCKSIZE);
+
+	gp->fh = NULL;
+	gp->pos = 0;
+
+	gp->past_lines.line = NULL;
+	gp->past_lines.next = NULL;
+	gp->past_lines_begin = &(gp->past_lines);
+	gp->past_lines_end = &(gp->past_lines);
+}
+
+size_t max(size_t a, size_t b)
+{
+	return (a > b) ? a : b;
+}
+
+size_t min(size_t a, size_t b)
+{
+	return (a > b) ? b : a;
+}
+
+
 void help_exit()
 {
 	puts("parse-tar [<options>] [<pathname>]");
@@ -13,16 +83,6 @@ void help_exit()
 };
 
 /* -------------------------------------------------------------- */
-
-typedef enum {
-	USTAR_NONE = 0,
-	USTAR_PATHNAME,
-	USTAR_UNAME,
-	USTAR_GNAME,
-	USTAR_UID,
-	USTAR_GID,
-	USTAR_MAX
-} header_info_t;
 
 
 typedef struct  {
@@ -38,7 +98,8 @@ header_info_nick_s header_info_nicks[] = {
 	{ "gname", USTAR_GNAME },
 	{ "group", USTAR_GNAME },
 	{ "uid", USTAR_UID },
-	{ "gid", USTAR_GID }
+	{ "gid", USTAR_GID },
+	{ "size", USTAR_SIZE }
 };
 
 header_info_t get_info_enum_from_str(const char* s)
@@ -52,21 +113,19 @@ header_info_t get_info_enum_from_str(const char* s)
 	return USTAR_NONE;
 }
 
-/* -------------------------------------------------------------- */
+/* -------------------*/
+/* functions to setup */
+/* -------------------*/
 
-size_t  num_infos_to_print = 0;
-int*    infos_to_print = NULL;
-int     uniq = 0;
-int     fail_if_multi = 0;
-const char* pathname_tarfile = NULL;
-
-static int parse_args(int argc, const char **argv)
+static int parse_args(int argc, const char **argv, global_params_t* gp)
 {
 	int i;
 
+	init_global_params(gp);
+
 	/* allocate info_to_print[argc] could be overkill, but sufficient */
-	infos_to_print = (int *)malloc(argc * sizeof(int));
-	memset(infos_to_print, 0, argc * sizeof(int));
+	gp->infos = (header_info_t *)malloc(argc * sizeof(header_info_t));
+	memset(gp->infos, 0, argc * sizeof(header_info_t));
 
 	for (i = 1; i < argc; i ++) {
 		header_info_t  id = USTAR_NONE;
@@ -86,24 +145,27 @@ static int parse_args(int argc, const char **argv)
 			id = get_info_enum_from_str(argv[i] + strlen("--print="));
 		else
 		if (!strcasecmp("--uniq", argv[i]))
-			uniq = 1;
+			gp->uniq = 1;
 		else
 		if (!strcasecmp("--fail-if-multi", argv[i]))
-			fail_if_multi = 1;
+			gp->fail_if_multi = 1;
 		else
-		if (argv[i][0] != '-' && !pathname_tarfile)
-			pathname_tarfile = argv[i];
+		if (argv[i][0] != '-' && !gp->pathname_tarfile)
+			gp->pathname_tarfile = argv[i];
 
 		if (id == USTAR_NONE)
 			continue;
 			
-		infos_to_print[num_infos_to_print] = id;
-		num_infos_to_print ++;
+		gp->infos[gp->num_infos] = id;
+		gp->num_infos ++;
 	}
-	return num_infos_to_print;
+	return gp->num_infos;
 }
 
-#define USTAR_BLOCKSIZE 512
+/* ---------------------------------------*/
+/* functions to process the loaded header */
+/* ---------------------------------------*/
+
 char block_buff[USTAR_BLOCKSIZE];
 typedef struct {
 	char name[100];         /*   0 */
@@ -124,16 +186,15 @@ typedef struct {
 	char prefix[155];       /* 345 */
 } ustar_header_t;
 
-int is_empty_header(const char* hdr_c)
+int is_empty_header(const char* h)
 {
 	int i;
 	for (i = 0; i < sizeof(ustar_header_t); i ++) {
-		if (hdr_c[i])
+		if (h[i])
 			return 0;
 	}
 	return 1;
 }
-
 
 const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 {
@@ -143,146 +204,121 @@ const char *get_hdr_data_by_id(ustar_header_t* hdr, header_info_t id)
 	case USTAR_GID: return hdr->gid;
 	case USTAR_UNAME: return hdr->uname;
 	case USTAR_GNAME: return hdr->gname;
+	case USTAR_SIZE: return hdr->size;
 	default: return NULL;
 	}
 }
 
-
-int get_int_from_oct_str(const char* s, size_t len)
+int get_printable_token(char* buff, size_t buff_size, ustar_header_t* hdr, header_info_t inf, int* failed)
 {
-	int i;
-	int r = 0;
+	const char*   raw;
+	char*   end_of_oct;
+	unsigned long dec;          /* scratch buff for oct->dec */
+	char          dec_buff[21]; /* scratch buff for dec->str. strlen(printf("%d", UINT64_MAX)) */
 
-	if (s[0] == '\0')
-		return -1;
+	memset(buff, 0, buff_size);
+	memset(dec_buff, 0, sizeof(dec_buff));
+	raw = get_hdr_data_by_id(hdr, inf);
 
-	for (i = 0; i < len; i++) {
-		if (s[i] == '\0')
-			return r;
-		r = r * 8;
-		r += (s[i] - '0');
+	switch (inf) {
+	/* raw data should be printed */
+	case USTAR_PATHNAME:
+		strncpy(buff, raw, min(buff_size, sizeof(hdr->name)));
+		return strlen(buff);
+	case USTAR_UNAME:
+	case USTAR_GNAME:
+		strncpy(buff, raw, min(buff_size, sizeof(hdr->uname)));
+		return strlen(buff);
+
+	/* octal data should be converted decimal */
+	case USTAR_UID:
+	case USTAR_GID:
+		strncpy(buff, raw, min(buff_size, sizeof(hdr->uid)));
+		break;
+
+	case USTAR_SIZE:
+		strncpy(buff, raw, min(buff_size, sizeof(hdr->size)));
+		break;
+
+	default:
+		return 0;
 	}
-	return r;
+
+	/* handle octal numerics */
+	dec = strtoul(buff, &end_of_oct, 8);
+	if (end_of_oct == buff) {
+		fprintf(stderr, "*** cannot parse UID/GID/SIZE from \"%s\"\n", buff);
+		*failed = -1;
+		return 0;
+	}
+
+	/* parse octal value */
+	snprintf(dec_buff, sizeof(dec_buff), "%d", dec);
+	if (buff_size < strlen(dec_buff) + 1) {
+		fprintf(stderr, "*** too large number %d to write to the buffer[%d]\n", dec, buff_size);
+		*failed = -1;
+	}
+	strncpy(buff, dec_buff, min(buff_size, strlen(dec_buff) + 1));
+	return strlen(buff);
 }
 
 
-size_t count_required_buff(ustar_header_t* hdr, size_t len_sep, int* failed)
+size_t count_required_buff(ustar_header_t* hdr, size_t len_sep, global_params_t* gp, int* failed)
 {
-	int    int_buff; /* scratch buff for oct->dec */
-	char   dec_buff[9]; /* scratch buff for dec->str */
-	size_t len_buff = 0;
-	int i, j;
-	for (i = 0; i < num_infos_to_print; i++) {
-		size_t len_tok = 0;
-		const char *dat = get_hdr_data_by_id(hdr, infos_to_print[i]);
+	char   buff[200]; /* sufficient to cover the longest data in the header */
+	size_t len = 0;
+	int i;
 
-		switch (infos_to_print[i]) {
-		/* raw data should be printed */
-		case USTAR_PATHNAME:
-			len_tok = strnlen(dat, sizeof(hdr->name));
-			break;
-		case USTAR_UNAME:
-		case USTAR_GNAME:
-			len_tok = strnlen(dat, sizeof(hdr->uname));
-			break;
-
-		/* octal data should be converted decimal */
-		case USTAR_UID:
-		case USTAR_GID:
-			int_buff = get_int_from_oct_str(dat, sizeof(hdr->uid));
-			if (int_buff < 0) {
-				fprintf(stderr, "*** cannot parse UID/GID from \"%s\"\n", dat);
-				*failed = -1;
-				return 0;
-			}
-
-			/* parse octal value */
-			snprintf(dec_buff, sizeof(dec_buff), "%d", int_buff);
-			len_tok = strlen(dec_buff);
-			break;
-		default:
-			continue;
-		}
-
+	for (i = 0; i < gp->num_infos; i++) {
+		len += get_printable_token(buff, sizeof(buff), hdr, gp->infos[i], failed);
 		if (0 < i)
-			len_buff += len_sep;
-		len_buff += len_tok;
+			len += len_sep;
 	}
-	return (len_buff + 1); // increment for NULL terminator
+	return (len + 1); // increment for NULL terminator
 }
 
-void fill_line_buff(char* line_buff, size_t len_line, ustar_header_t*  hdr, const char* sep)
+void fill_line_buff(char* buff, size_t buff_size, ustar_header_t*  hdr, const char* sep, global_params_t* gp, int *failed)
 {
+	char* cur;
+	char* end;
 	int i;
-	char   dec_buff[9]; /* scratch buff for dec->str */
 
-	line_buff[0] = '\0';
-	for (i = 0; i < num_infos_to_print; i++) {
-		const char *dat = get_hdr_data_by_id(hdr, infos_to_print[i]);
+	memset(buff, 0, buff_size);
+	cur = buff;
+	end = buff + buff_size;
+	for (i = 0; i < gp->num_infos; i++) {
+		cur += get_printable_token(cur, (end - cur), hdr, gp->infos[i], failed);
 
-		switch (infos_to_print[i]) {
-		/* raw data should be printed */
-		case USTAR_PATHNAME:
-			strncat(line_buff, dat, sizeof(hdr->name));
-			break;
-		case USTAR_UNAME:
-		case USTAR_GNAME:
-			strncat(line_buff, dat, sizeof(hdr->uname));
-			break;
-
-		/* octal data should be converted decimal */
-		case USTAR_UID:
-		case USTAR_GID:
-			/* parse octal value */
-			snprintf(dec_buff, sizeof(dec_buff), "%d", get_int_from_oct_str(dat, sizeof(hdr->uid)));
-			strncat(line_buff, dec_buff, sizeof(dec_buff));
-			break;
-		default:
-			continue;
-		}
-
-		if (i < num_infos_to_print - 1)
-			strcat(line_buff, sep);
+		if (i < gp->num_infos - 1)
+			strncpy(cur, sep, (end - cur));
 	}
 }
 
-size_t pos = 0;
-long seek_to_next_block(FILE* fh, long block_size, int *failed)
+/* --------------------------------*/
+/* functions to process the stream */
+/* --------------------------------*/
+
+size_t seek_to_next_block(global_params_t* gp, int *failed)
 {
-	int ret_fseek; 
-	long overflow;
-	overflow = (pos % block_size);
+	size_t overflow = (gp->pos % gp->block_size);
+	size_t skip_size;
+
 	if (overflow == 0)
 		return 0;
-	if (1 != fread(block_buff, block_size - overflow, 1, fh)) {
+	skip_size = gp->block_size - overflow;
+	if (1 != fread(gp->block_buff, skip_size, 1, gp->fh)) {
 		*failed = -1;
 		return -1;
 	}
-	pos += (block_size - overflow);
-	return (block_size - overflow);
+	gp->pos += skip_size;
+	return skip_size;
 }
 
-size_t num_past_lines = 0;
-typedef struct past_line_t {
-	const char*  line;
-	struct past_line_t* next;
-} past_line_t;
-
-past_line_t  past_lines = {NULL, NULL};
-past_line_t* past_lines_begin;
-past_line_t* past_lines_end;
-
-void set_past_lines_begin_end()
-{
-	past_lines_begin = &past_lines;
-	past_lines_end   =  past_lines_begin;
-}
-
-int search_past_lines(const char* s)
+int search_past_lines(const char* s, global_params_t* gp)
 {
 	int i;
 	past_line_t *pl;
-	for (pl = past_lines_begin, i = 0 ; pl < past_lines_end; pl = pl->next, i ++) {
+	for (pl = gp->past_lines_begin, i = 0 ; pl->line != NULL; pl = pl->next, i ++) {
 		if (!strcmp(s, pl->line)) {
 			return i;
 		}	
@@ -290,135 +326,145 @@ int search_past_lines(const char* s)
 	return -1;
 }
 
-size_t feed_single_item_tarfile(FILE* fh, int* num_empty, int* failed)
+void append_past_line(global_params_t* gp, char* buff)
+{
+	gp->past_lines_end->line = buff;
+	gp->past_lines_end->next = malloc(sizeof(past_line_t));
+	gp->past_lines_end->next->line = NULL;
+	gp->past_lines_end->next->next = NULL;
+	gp->past_lines_end = gp->past_lines_end->next;
+}
+
+size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed)
 {
 	ustar_header_t  hdr;
-	size_t  len_line;
-	size_t  len_content;
-	char*  line_buff;
-	int i;
+	size_t          len;
+	char*           buff;
+	size_t          len_content;
+	size_t          hdr_begin = gp->pos;
 
-	size_t hdr_begin = pos;
+	int             i;
 
-	if (feof(fh))
+
+	if (feof(gp->fh))
 		return 0;
 	else
-	if (1 != fread(&hdr, sizeof(hdr), 1, fh))
+	if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh))
 	{
 		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
-	pos += sizeof(hdr);
+	gp->pos += gp->block_size;
 
+	memcpy(&hdr, gp->block_buff, sizeof(hdr));
 	if (is_empty_header((const char*)&hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
-		seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+		seek_to_next_block(gp, failed);
 		*num_empty = *num_empty + 1;
 		return 0;
 	}
 
+	/* non-empty header, reset length of empty headers */
 	*num_empty = 0;
-	len_line = count_required_buff(&hdr, strlen("\t"), failed);
+	len = count_required_buff(&hdr, strlen("\t"), gp, failed);
 	if (*failed) {
 		fprintf(stderr, "*** cannot calculate required size to print\n");
 		return sizeof(hdr);
 	}
 
-	if (len_line == 0) {
+	if (len == 0) {
 		puts("");
 		return sizeof(hdr);
 	}
 
-	line_buff = malloc(len_line);
-	fill_line_buff(line_buff, len_line, &hdr, "\t");
+	buff = malloc(len);
+	fill_line_buff(buff, len, &hdr, "\t", gp, failed);
 
-	if (!uniq) {
-		puts(line_buff);
-		free(line_buff);
-	}
-	else if (0 <= search_past_lines(line_buff)) {
+	if (!gp->uniq) {
+		puts(buff);
+		free(buff);
+	} else
+	if (0 <= search_past_lines(buff, gp)) {
 		/* found same line in the past, do not print */
-		free(line_buff);
+		free(buff);
 	}
 	else {
 		/* "--uniq" is given, but no same line in the past */
-		if (fail_if_multi && past_lines_begin->line != NULL) {
-			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", line_buff, past_lines_begin->line);
+		if (gp->fail_if_multi && gp->past_lines_begin->line != NULL) {
+			fprintf(stderr, "*** line \"%s\" differs from past \"%s\"\n", buff, gp->past_lines_begin->line);
 			*failed = -2;
 			return sizeof(hdr);
 		}
-
-		past_lines_end->line = line_buff;
-		past_lines_end->next = malloc(sizeof(past_line_t));
-		past_lines_end->next->line = NULL;
-		past_lines_end->next->next = NULL;
-		past_lines_end = past_lines_end->next;
-		puts(line_buff);
+		append_past_line(gp, buff);
+		puts(buff);
 	}
 	
+#if 0 /* now all chunck is block-sized, no need to skip trailer */
 	/* some padding between tar header and content */
-	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+	seek_to_next_block(gp, failed);
 	if (*failed) {
 		fprintf(stderr, "*** fail in seeking to the content");
-		return (pos - hdr_begin);
+		return (gp->pos - hdr_begin);
 	}
+#endif
 
 	/* skip content */
-	len_content = get_int_from_oct_str(hdr.size, sizeof(hdr.size));
+	memset(gp->block_buff, 0, gp->block_size);
+	memcpy(gp->block_buff, hdr.size, sizeof(hdr.size));
+	len_content = strtoul(gp->block_buff, NULL, 8);
 	if (len_content > 0) {
 		int l;
-		for (l = 0; l < len_content; l += USTAR_BLOCKSIZE) {
-			if (1 != fread(block_buff, USTAR_BLOCKSIZE, 1, fh)) {
+		for (l = 0; l < len_content; l += gp->block_size) {
+			if (1 != fread(gp->block_buff, gp->block_size, 1, gp->fh)) {
 				fprintf(stderr, "*** fail in skipping the content\n");
 				*failed = -1;
-				return (pos - hdr_begin);
+				return (gp->pos - hdr_begin);
 			}
-			pos += USTAR_BLOCKSIZE;
+			gp->pos += gp->block_size;
 		}
 	}
 
 	/* some padding after content */
-	seek_to_next_block(fh, USTAR_BLOCKSIZE, failed);
+	seek_to_next_block(gp, failed);
 	if (*failed)
 		fprintf(stderr, "*** fail in seeking to the next block");
-	return (pos - hdr_begin);
+	return (gp->pos - hdr_begin);
 }
 
 int main(int argc, const char **argv)
 {
-	FILE* fh;
 	int chunk_length;
 	int failed = 0;
 	int num_empty = 0;
+	global_params_t gp;
 
-	set_past_lines_begin_end();
-	parse_args(argc, argv);
+	parse_args(argc, argv, &gp);
 
 	/* check nothing is inappropriate test */
-	if (!num_infos_to_print)
+	if (!gp.num_infos)
 		exit(-1);
 
-	if (!pathname_tarfile)
-		fh = stdin;
+	if (!gp.pathname_tarfile)
+		gp.fh = stdin;
 	else
-		fh = fopen(pathname_tarfile, "r");
+		gp.fh = fopen(gp.pathname_tarfile, "r");
 
-	if (!fh) {
-		if (pathname_tarfile)
-			fprintf(stderr, "*** cannot open %s\n", pathname_tarfile);
+	if (!gp.fh) {
+		if (gp.pathname_tarfile)
+			fprintf(stderr, "*** cannot open %s\n", gp.pathname_tarfile);
 		exit(-1);
 	}
 
 	do {
-		chunk_length = feed_single_item_tarfile(fh, &num_empty, &failed);
+		chunk_length = feed_single_item_tarfile(&gp, &num_empty, &failed);
 		if (chunk_length == 0 && num_empty > 1) {
 			fprintf(stderr, "*** 2 empty headers found, take them as the end of tar\n");
 			break;
 		}
 	} while (!failed);
 
-	fclose(fh);
+	fclose(gp.fh);
 	if (failed) {
 		fprintf(stderr, "*** parse failed\n");
 		exit(-2);
