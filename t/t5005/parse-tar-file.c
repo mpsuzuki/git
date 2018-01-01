@@ -14,13 +14,14 @@ typedef enum {
 } header_info_t;
 
 typedef struct {
-	size_t	size;
-	char*	buff;
+	size_t  size;
+	char*   buff;
 } block_t;
 
 typedef struct {
 	FILE*	file;
 	size_t	pos;
+	block_t	block;
 } file_handle_t;
 
 typedef struct past_line_t {
@@ -44,7 +45,6 @@ typedef struct {
 	const char*  	pathname_tarfile;
 
 	/* internal things */
-	block_t		block;
 	file_handle_t	handle;
 	past_lines_t	past_lines;
 } global_params_t;
@@ -58,11 +58,10 @@ static void init_global_params(global_params_t *gp)
 	gp->fail_if_multi = 0;
 	gp->pathname_tarfile = NULL;
 
-	gp->block.size = USTAR_BLOCKSIZE;
-	gp->block.buff = malloc(USTAR_BLOCKSIZE);
-
 	gp->handle.file = NULL;
 	gp->handle.pos = 0;
+	gp->handle.block.size = USTAR_BLOCKSIZE;
+	gp->handle.block.buff = malloc(USTAR_BLOCKSIZE);
 
 	gp->past_lines.begin = malloc(sizeof(past_line_t));
 	gp->past_lines.begin->line = NULL;
@@ -370,13 +369,13 @@ void append_past_line(past_lines_t* pls, char* buff)
 
 size_t seek_to_next_block(global_params_t* gp, int *failed)
 {
-	size_t overflow = (gp->handle.pos % gp->block.size);
+	size_t overflow = (gp->handle.pos % gp->handle.block.size);
 	size_t skip_size;
 
 	if (overflow == 0)
 		return 0;
-	skip_size = gp->block.size - overflow;
-	if (1 != fread(gp->block.buff, skip_size, 1, gp->handle.file)) {
+	skip_size = gp->handle.block.size - overflow;
+	if (1 != fread(gp->handle.block.buff, skip_size, 1, gp->handle.file)) {
 		*failed = -1;
 		return -1;
 	}
@@ -391,15 +390,15 @@ size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* n
 	if (feof(gp->handle.file))
 		return 0;
 	else
-	if (1 != fread(gp->block.buff, gp->block.size, 1, gp->handle.file))
+	if (1 != fread(gp->handle.block.buff, gp->handle.block.size, 1, gp->handle.file))
 	{
 		fprintf(stderr, "*** not EOF but cannot load a header from %08o\n", hdr_begin);
 		*failed = -1;
 		return 0;
 	}
-	gp->handle.pos += gp->block.size;
+	gp->handle.pos += gp->handle.block.size;
 
-	memcpy(hdr, gp->block.buff, sizeof(ustar_header_t));
+	memcpy(hdr, gp->handle.block.buff, sizeof(ustar_header_t));
 
 	if (is_empty_header(hdr)) {
 		fprintf(stderr, "*** empty header found at %08o, skip to next block\n", hdr_begin);
@@ -407,7 +406,7 @@ size_t try_to_get_single_header(global_params_t* gp, ustar_header_t* hdr, int* n
 		*num_empty = *num_empty + 1;
 		return 0;
 	}
-	return gp->block.size;
+	return gp->handle.block.size;
 }
 
 int print_single_header_if_uniq(global_params_t* gp, char* buff, int *failed)
@@ -476,19 +475,19 @@ size_t skip_content(global_params_t* gp, ustar_header_t* hdr, int *failed)
 	size_t  hdr_begin, len_content;
 
 	/* assume we used block for ustar header */
-        hdr_begin = gp->handle.pos - gp->block.size;
+        hdr_begin = gp->handle.pos - gp->handle.block.size;
 
-	len_content = get_content_len_from_hdr(&(gp->block), hdr, failed);
+	len_content = get_content_len_from_hdr(&(gp->handle.block), hdr, failed);
 	if (len_content == 0)
-		return sizeof(gp->block.size);
+		return sizeof(gp->handle.block.size);
 
-	for (l = 0; l < len_content; l += gp->block.size) {
-		if (1 != fread(gp->block.buff, gp->block.size, 1, gp->handle.file)) {
+	for (l = 0; l < len_content; l += gp->handle.block.size) {
+		if (1 != fread(gp->handle.block.buff, gp->handle.block.size, 1, gp->handle.file)) {
 			fprintf(stderr, "*** fail in skipping the content\n");
 			*failed = -1;
 			return (gp->handle.pos - hdr_begin);
 		}
-		gp->handle.pos += gp->block.size;
+		gp->handle.pos += gp->handle.block.size;
 	}
 
 	/* skip the last half-filled block */
@@ -512,7 +511,7 @@ size_t feed_single_item_tarfile(global_params_t* gp, int* num_empty, int* failed
 	/* non-empty header, reset length of empty headers */
 	*num_empty = 0;
 	if (0 > try_to_print_single_header(gp, &hdr, failed) || *failed)
-		return sizeof(gp->block.size);
+		return sizeof(gp->handle.block.size);
 	
 	skip_content(gp, &hdr, failed);
 	return (gp->handle.pos - hdr_begin);
