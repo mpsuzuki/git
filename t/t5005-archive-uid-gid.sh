@@ -20,28 +20,28 @@ check_uid_gid_uname_gname_in_tar() {
 	# $3 gid (digit in string)
 	# $4 uname (string)
 	# $5 gname (string)
-	uid=`python "$TEST_DIRECTORY"/t5005/parse-tar-file.py --print=uid --fail-if-multi $1`
+	uid=`${GIT_BUILD_DIR}/t/helper/test-parse-tar-file --print=uid --fail-if-multi $1 2>/dev/null`
 	if test $? != 0 -o x"${uid}" != "x"$2
 	then
 		echo "(some) uid differs from the specified value"
 		return $?
 	fi
 
-	gid=`python "$TEST_DIRECTORY"/t5005/parse-tar-file.py --print=gid --fail-if-multi $1`
+	gid=`${GIT_BUILD_DIR}/t/helper/test-parse-tar-file --print=gid --fail-if-multi $1 2>/dev/null`
 	if test $? != 0 -o x"${gid}" != "x"$3
 	then
 		echo "(some) gid differs from the specified value"
 		return $?
 	fi
 
-	uname=`python "$TEST_DIRECTORY"/t5005/parse-tar-file.py --print=uname --fail-if-multi $1`
+	uname=`${GIT_BUILD_DIR}/t/helper/test-parse-tar-file --print=uname --fail-if-multi $1 2>/dev/null`
 	if test $? != 0 -o x"${uname}" != "x"$4
 	then
 		echo "(some) uname differs from the specified value"
 		return $?
 	fi
 
-	gname=`python "$TEST_DIRECTORY"/t5005/parse-tar-file.py --print=gname --fail-if-multi $1`
+	gname=`${GIT_BUILD_DIR}/t/helper/test-parse-tar-file --print=gname --fail-if-multi $1 2>/dev/null`
 	if test $? != 0 -o x"${gname}" != "x"$5
 	then
 		echo "(some) gname differs from the specified value"
