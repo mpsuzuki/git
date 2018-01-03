@@ -74,6 +74,21 @@ struct zip_extra_mtime {
 	unsigned char _end[1];
 };
 
+struct zip_extra_uid_gid {
+	unsigned char magic[2]; /* 0x00 0x0d */
+	unsigned char extra_size[2];
+	unsigned char atime[4];
+	unsigned char mtime[4];
+	unsigned char uid[2];
+	unsigned char gid[2];
+	/*
+	 * hard, symbolic link, or, device major, minor
+	 * informations would follow, but git-archive
+	 * does not support at present
+	 */
+	unsigned char _end[1];
+};
+
 struct zip64_extra {
 	unsigned char magic[2];
 	unsigned char extra_size[2];
@@ -117,6 +132,11 @@ struct zip64_dir_trailer_locator {
 #define ZIP_EXTRA_MTIME_SIZE	offsetof(struct zip_extra_mtime, _end)
 #define ZIP_EXTRA_MTIME_PAYLOAD_SIZE \
 	(ZIP_EXTRA_MTIME_SIZE - offsetof(struct zip_extra_mtime, flags))
+
+#define ZIP_EXTRA_UID_GID_SIZE	offsetof(struct zip_extra_uid_gid, _end)
+#define ZIP_EXTRA_UID_GID_PAYLOAD_SIZE \
+	(ZIP_EXTRA_UID_GID_SIZE - offsetof(struct zip_extra_uid_gid, atime))
+
 #define ZIP64_EXTRA_SIZE	offsetof(struct zip64_extra, _end)
 #define ZIP64_EXTRA_PAYLOAD_SIZE \
 	(ZIP64_EXTRA_SIZE - offsetof(struct zip64_extra, size))
@@ -283,6 +303,9 @@ static int write_zip_entry(struct archiver_args *args,
 	struct zip_local_header header;
 	uintmax_t offset = zip_offset;
 	struct zip_extra_mtime extra;
+
+	struct zip_extra_uid_gid extra_uid_gid;
+
 	struct zip64_extra extra64;
 	size_t header_extra_size = ZIP_EXTRA_MTIME_SIZE;
 	int need_zip64_extra = 0;
@@ -379,6 +402,16 @@ static int write_zip_entry(struct archiver_args *args,
 	extra.flags[0] = 1;	/* just mtime */
 	copy_le32(extra.mtime, args->time);
 
+	copy_le16(extra_uid_gid.magic, 0x000d);
+	copy_le16(extra_uid_gid.extra_size, ZIP_EXTRA_UID_GID_PAYLOAD_SIZE);
+	copy_le32(extra_uid_gid.atime, args->time);
+	copy_le32(extra_uid_gid.mtime, args->time);
+	if (0xffffu >= args->uid)
+		copy_le16(extra_uid_gid.uid, args->uid);
+	if (0xffffu >= args->gid)
+		copy_le16(extra_uid_gid.uid, args->gid);
+
+
 	if (size > 0xffffffff || compressed_size > 0xffffffff)
 		need_zip64_extra = 1;
 	if (stream && size > 0x7fffffff)
@@ -407,6 +440,10 @@ static int write_zip_entry(struct archiver_args *args,
 	zip_offset += pathlen;
 	write_or_die(1, &extra, ZIP_EXTRA_MTIME_SIZE);
 	zip_offset += ZIP_EXTRA_MTIME_SIZE;
+	if ((args->uid > 0 || args->gid > 0) && (0xffffu > args->uid || 0xffffu > args->gid)) {
+		write_or_die(1, &extra_uid_gid, ZIP_EXTRA_UID_GID_SIZE);
+		zip_offset += ZIP_EXTRA_UID_GID_SIZE;
+	}
 	if (need_zip64_extra) {
 		copy_le16(extra64.magic, 0x0001);
 		copy_le16(extra64.extra_size, ZIP64_EXTRA_PAYLOAD_SIZE);
